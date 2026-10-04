@@ -15,7 +15,7 @@ Tiny self-hosted status dashboard. An auto-tiling grid of big buttons - click on
 install.bat
 ```
 
-Needs Python 3.8+. Open `http://localhost:8080`.
+Needs Python 3.8+. Open `http://localhost:8888`.
 
 ## Use
 
@@ -32,7 +32,7 @@ PASSWORD=your-secret
 - `PASSWORD` set: everyone can **view** the dashboard, but changing services or touching backups requires logging in (the login form appears in the settings panel).
 - No `.env` or empty `PASSWORD`: no login anywhere.
 
-Other options: `PORT` (8080), `HOST` (0.0.0.0), `CHECK_INTERVAL` seconds (30), `DATA_DIR` (`./data`). Real environment variables override `.env`.
+Other options: `PORT` (8888), `HOST` (0.0.0.0), `CHECK_INTERVAL` seconds (30), `DATA_DIR` (`./data`). Real environment variables override `.env`.
 
 ## Backups
 

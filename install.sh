@@ -14,11 +14,11 @@ if [ ! -f .env ]; then
   if [ -t 0 ] && [ "${1:-}" != "--run" ]; then
     read -rsp "Password for making changes (empty = no login): " pw; echo
   fi
-  { echo "PASSWORD=$pw"; echo "PORT=8080"; } > .env
+  { echo "PASSWORD=$pw"; echo "PORT=8888"; } > .env
   chmod 600 .env
   echo "Created .env"
 fi
-PORT=$(sed -n 's/^PORT=//p' .env | tail -1); PORT=${PORT:-8080}
+PORT=$(sed -n 's/^PORT=//p' .env | tail -1); PORT=${PORT:-8888}
 
 if [ "${1:-}" != "--run" ] && [ -t 0 ] && command -v systemctl >/dev/null; then
   read -rp "Install as a systemd service in /etc/systemd/system (autostart, needs sudo)? [y/N] " a
