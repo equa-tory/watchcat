@@ -152,7 +152,7 @@ li.grp{padding:6px 8px}
       <div class="cols3">
         <input id="sname" placeholder="Name" maxlength="60">
         <input id="sicon" placeholder="Icon" maxlength="8" title="Optional emoji or letters. Empty = the site's own favicon">
-        <input id="sgroup" type="number" min="0" max="999" placeholder="Group" title="Higher number shows first, same number = same color, 0 = no group">
+        <input id="sgroup" type="number" min="0" max="999" placeholder="Group" title="Lower number shows first, same number = same color, 0 = no group (shown last)">
       </div>
       <div class="stack" id="arows"></div>
       <div><button type="button" class="btn sm" id="aadd">+ address</button></div>
@@ -226,8 +226,8 @@ function copy(t) {
 }
 
 /* ---------- model helpers ---------- */
-const gkey = g => g > 0 ? g : -1;            // higher group first, group 0 last
-const ordered = () => S.services.map((s, i) => [s, i]).sort((a, b) => gkey(b[0].group) - gkey(a[0].group) || a[1] - b[1]).map(x => x[0]);
+const gkey = g => g > 0 ? g : 1e9;           // lower group number first (1, 2, 3...), group 0 last
+const ordered = () => S.services.map((s, i) => [s, i]).sort((a, b) => gkey(a[0].group) - gkey(b[0].group) || a[1] - b[1]).map(x => x[0]);
 const hostOf = a => { if (a.tcp) return a.url; try { return new URL(a.url).host; } catch (e) { return a.url; } };
 const stOf = up => up === true ? "up" : up === false ? "down" : "pend";
 function overall(s) {
@@ -523,7 +523,7 @@ function renderList() {
 /* groups: optional name + color per group number */
 let gdraft = {};
 function renderGroups() {
-  const nums = [...new Set(S.services.map(s => s.group).filter(g => g > 0))].sort((a, b) => b - a);
+  const nums = [...new Set(S.services.map(s => s.group).filter(g => g > 0))].sort((a, b) => a - b);
   $("gsec").hidden = !nums.length;
   gdraft = {};
   $("glist").replaceChildren(...nums.map(g => {

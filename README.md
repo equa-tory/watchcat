@@ -23,7 +23,7 @@ Tap the faint gear in the bottom-right corner (it lights up on hover): add, edit
 
 - **Fits any screen**: tiles stretch to fill the whole screen with no empty strips; on a phone they shrink so *every* service is visible at once. Settings -> Display -> **Bigger + scroll** switches to larger tiles and a scrolling page (remembered per browser).
 - **Icons**: the site's own favicon is fetched automatically and cached in `data/icons`. Type an emoji/letters in *Icon* to override it.
-- **Groups**: give services a group number. Same number = same color and placed side by side; **higher numbers come first**, group `0` (default) comes last. Colors are fixed per number (golden-angle hues, so they never change between reloads); under *Groups* you can give a group a name and pick its color.
+- **Groups**: give services a group number. Same number = same color and placed side by side; **lower numbers come first** (1, 2, 3...), group `0` (default) comes last. Colors are fixed per number (golden-angle hues, so they never change between reloads); under *Groups* you can give a group a name and pick its color.
 - **Several addresses per tile** (e.g. local + remote): use **+ address**. The tile shows one clickable sub-block per address, each with its own status; the tile dot is green when all are up, amber when some are down.
 - **Port-only services** (no web page, e.g. a game server or SSH): switch an address from *web* to *port only* and enter `host:port`. It is checked with a TCP connect; clicking it copies `host:port`.
 - A web URL without a scheme is treated as `http://`. A web address is **up** when it answers with any HTTP status below 500 (login pages and 401/403 count as up); self-signed HTTPS certificates are accepted and environment proxies are ignored.
