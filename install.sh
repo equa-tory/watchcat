@@ -21,26 +21,28 @@ fi
 PORT=$(sed -n 's/^PORT=//p' .env | tail -1); PORT=${PORT:-8080}
 
 if [ "${1:-}" != "--run" ] && [ -t 0 ] && command -v systemctl >/dev/null; then
-  read -rp "Install as a systemd user service (autostart)? [y/N] " a
+  read -rp "Install as a systemd service in /etc/systemd/system (autostart, needs sudo)? [y/N] " a
   if [[ "$a" =~ ^[Yy] ]]; then
-    mkdir -p ~/.config/systemd/user
-    cat > ~/.config/systemd/user/watchcat.service <<UNIT
+    SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo"
+    SVC_USER="${SUDO_USER:-$(id -un)}"
+    $SUDO tee /etc/systemd/system/watchcat.service >/dev/null <<UNIT
 [Unit]
 Description=watchcat status dashboard
 After=network-online.target
+Wants=network-online.target
 
 [Service]
+User=$SVC_USER
 ExecStart=$(command -v python3) $DIR/server.py
 WorkingDirectory=$DIR
 Restart=always
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target
 UNIT
-    systemctl --user daemon-reload
-    systemctl --user enable --now watchcat
-    loginctl enable-linger "$USER" 2>/dev/null || echo "(run 'sudo loginctl enable-linger $USER' to start at boot without login)"
-    echo "Running: http://localhost:$PORT   (logs: journalctl --user -u watchcat -f)"
+    $SUDO systemctl daemon-reload
+    $SUDO systemctl enable --now watchcat
+    echo "Running: http://localhost:$PORT   (logs: journalctl -u watchcat -f)"
     exit 0
   fi
 fi

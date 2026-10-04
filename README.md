@@ -6,7 +6,7 @@ Tiny self-hosted status dashboard. An auto-tiling grid of big buttons - click on
 
 **Linux / macOS**
 ```sh
-./install.sh          # asks for an optional password, offers a systemd user service
+./install.sh          # asks for an optional password, offers a systemd service (`/etc/systemd/system/watchcat.service`, uses sudo)
 ./install.sh --run    # just run in the foreground
 ```
 
