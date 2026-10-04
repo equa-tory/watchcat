@@ -8,49 +8,81 @@
 <style>
 :root{
   --bg:#0c0e13;--surface:#151922;--surface2:#1c2130;--border:#262c3b;--text:#e8ebf2;--muted:#7d869a;
-  --up:#34d399;--down:#f87171;--pend:#6b7488;--accent:#7c9cff;--shadow:0 8px 30px rgba(0,0,0,.35);
+  --up:#34d399;--down:#f87171;--warn:#fbbf24;--pend:#6b7488;--accent:#7c9cff;--shadow:0 8px 30px rgba(0,0,0,.35);
 }
 @media (prefers-color-scheme:light){:root{
   --bg:#f3f4f8;--surface:#fff;--surface2:#f0f2f7;--border:#e0e4ec;--text:#161a23;--muted:#6a7387;
-  --up:#10b981;--down:#ef4444;--pend:#9aa3b5;--accent:#4f6fe8;--shadow:0 8px 30px rgba(30,40,70,.12);
+  --up:#10b981;--down:#ef4444;--warn:#f59e0b;--pend:#9aa3b5;--accent:#4f6fe8;--shadow:0 8px 30px rgba(30,40,70,.12);
 }}
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%}
-body{background:radial-gradient(1200px 700px at 50% -10%,var(--surface2),var(--bg));background-color:var(--bg);
+body{background:radial-gradient(1200px 700px at 50% -10%,var(--surface2),var(--bg));background-color:var(--bg);background-attachment:fixed;
   color:var(--text);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
 button,input{font:inherit;color:inherit}
-#grid{display:grid;justify-content:center;align-content:center;gap:14px;min-height:100dvh;padding:20px}
-.tile{container-type:inline-size;position:relative;display:flex;flex-direction:column;justify-content:space-between;
-  padding:6cqw;border-radius:20px;background:var(--surface);border:1px solid var(--border);color:inherit;text-decoration:none;
-  overflow:hidden;transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease,opacity .2s}
-.tile:hover,.tile:focus-visible{transform:translateY(-3px);box-shadow:var(--shadow);border-color:var(--accent);outline:none}
-.tile.down{border-color:color-mix(in srgb,var(--down) 55%,var(--border));opacity:.8}
-.tile.down::before{content:"";position:absolute;inset:0;background:linear-gradient(160deg,color-mix(in srgb,var(--down) 14%,transparent),transparent 60%);pointer-events:none}
-.top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
-.ico{width:clamp(34px,16cqw,56px);height:clamp(34px,16cqw,56px);border-radius:28%;display:grid;place-items:center;
-  background:var(--surface2);font-size:clamp(17px,8cqw,28px);font-weight:650;text-transform:uppercase}
-.pill{display:flex;align-items:center;gap:6px;font-size:clamp(11px,4.4cqw,13px);color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
-.dot{width:9px;height:9px;border-radius:50%;background:var(--pend)}
-.up .dot{background:var(--up);box-shadow:0 0 0 3px color-mix(in srgb,var(--up) 22%,transparent),0 0 12px var(--up)}
-.down .dot{background:var(--down);box-shadow:0 0 0 3px color-mix(in srgb,var(--down) 22%,transparent),0 0 12px var(--down)}
-.name{font-size:clamp(16px,9cqw,30px);font-weight:650;letter-spacing:-.02em;line-height:1.15;overflow-wrap:anywhere;
+
+/* grid: columns/rows/spans are computed in layout() so tiles always fill the whole width */
+#grid{display:grid;width:100%}
+[data-s=up]{--c:var(--up)}[data-s=down]{--c:var(--down)}[data-s=warn]{--c:var(--warn)}[data-s=pend]{--c:var(--pend)}
+.dot{display:inline-block;flex:none;width:.7em;height:.7em;border-radius:50%;background:var(--c,var(--pend));
+  box-shadow:0 0 0 .28em color-mix(in srgb,var(--c,var(--pend)) 22%,transparent),0 0 1.1em var(--c,var(--pend))}
+[data-s=pend] .dot,.dot[data-s=pend]{box-shadow:none}
+
+.tile{position:relative;display:flex;flex-direction:column;justify-content:space-between;min-width:0;min-height:0;overflow:hidden;
+  padding:var(--tp,12px);border-radius:var(--r,18px);background:var(--surface);border:1px solid var(--border);
+  color:inherit;text-decoration:none;text-align:left;transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease,opacity .2s}
+button.tile,button.sub{font:inherit;cursor:copy}
+.tile.g{background:color-mix(in srgb,var(--gc) 13%,var(--surface));border-color:color-mix(in srgb,var(--gc) 42%,var(--border))}
+.tile.g::after{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:var(--gc);opacity:.9}
+.tile[data-s=down]{border-color:color-mix(in srgb,var(--down) 55%,var(--border));opacity:.82}
+.tile[data-s=down]::before{content:"";position:absolute;inset:0;background:linear-gradient(160deg,color-mix(in srgb,var(--down) 14%,transparent),transparent 60%);pointer-events:none}
+.tile[data-s=warn]{border-color:color-mix(in srgb,var(--warn) 50%,var(--border))}
+a.tile:hover,button.tile:hover,a.tile:focus-visible,button.tile:focus-visible{transform:translateY(-2px);box-shadow:var(--shadow);border-color:var(--accent);outline:none}
+
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:.5em}
+.ico{flex:none;width:var(--is,40px);height:var(--is,40px);border-radius:26%;display:grid;place-items:center;overflow:hidden;
+  background:var(--surface2);font-size:calc(var(--is,40px)*.5);font-weight:650;text-transform:uppercase;line-height:1}
+.ico.img{background:#f3f5f9;padding:calc(var(--is,40px)*.13)}
+.ico img{width:100%;height:100%;object-fit:contain;display:block}
+.pill{display:flex;align-items:center;gap:.5em;font-size:var(--hs,12px);color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;padding-top:.25em}
+.name{font-size:var(--ns,20px);font-weight:650;letter-spacing:-.02em;line-height:1.12;overflow-wrap:anywhere;
   display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.host{margin-top:3px;color:var(--muted);font-size:clamp(11px,4.6cqw,14px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#empty{position:fixed;inset:0;display:grid;place-items:center;text-align:center;color:var(--muted);pointer-events:none}
+.host{margin-top:.25em;color:var(--muted);font-size:var(--hs,12px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+[data-sz=sm] .host,[data-sz=xs] .host{display:none}
+[data-sz=xs] .pt{display:none}
+
+.multi .top{height:var(--hh,28px);align-items:center;flex:none}
+.multi .top .ico{--is:var(--hh,28px)}
+.multi .name{flex:1;min-width:0;font-size:var(--ns,14px);-webkit-line-clamp:1}
+.multi .pill{padding-top:0}
+.subs{flex:1;min-height:0;display:grid;gap:var(--ig,4px);margin-top:var(--ig,4px)}
+.sub{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:.5em;min-width:0;min-height:0;overflow:hidden;
+  padding:.4em .7em;border-radius:calc(var(--r,18px)*.55);background:var(--surface2);border:1px solid var(--border);
+  color:inherit;text-decoration:none;text-align:left;font-size:var(--sf,12px);transition:border-color .15s,transform .15s}
+.sub:hover,.sub:focus-visible{border-color:var(--accent);outline:none}
+.sub[data-s=down]{border-color:color-mix(in srgb,var(--down) 55%,var(--border));background:color-mix(in srgb,var(--down) 10%,var(--surface2))}
+.sl{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.sm{color:var(--muted);font-size:.85em;font-variant-numeric:tabular-nums;white-space:nowrap}
+.sub.nm .sm{display:none}
+.sub.two{grid-template-columns:auto 1fr;grid-template-rows:auto 1fr;align-items:start}
+.sub.two .dot{grid-area:1/1;margin-top:.15em}
+.sub.two .sm{grid-area:1/2;justify-self:end}
+.sub.two .sl{grid-area:2/1/3/3;align-self:end;font-size:1.1em}
+
+#empty{position:fixed;inset:0;display:grid;place-items:center;text-align:center;color:var(--muted);pointer-events:none;padding:20px}
 #empty b{display:block;color:var(--text);font-size:22px;margin-bottom:6px}
 [hidden]{display:none!important}
 
-#gear{position:fixed;right:max(18px,env(safe-area-inset-right));bottom:max(18px,env(safe-area-inset-bottom));z-index:5;width:40px;height:40px;
+#gear{position:fixed;right:max(14px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom));z-index:5;width:38px;height:38px;
   border-radius:50%;border:1px solid var(--border);background:var(--surface);display:grid;place-items:center;cursor:pointer;
   opacity:.16;transition:opacity .2s,transform .2s}
 #gear:hover,#gear:focus-visible,body.open #gear{opacity:1}
 #gear:hover{transform:rotate(45deg)}
-@media (hover:none){#gear{opacity:.5}}
+@media (hover:none){#gear{opacity:.4}}
 #gear svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 
 #scrim{position:fixed;inset:0;background:rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:opacity .2s;z-index:6}
 body.open #scrim{opacity:1;pointer-events:auto}
-#panel{position:fixed;top:0;right:0;bottom:0;width:min(400px,100vw);z-index:7;background:var(--surface);border-left:1px solid var(--border);
+#panel{position:fixed;top:0;right:0;bottom:0;width:min(420px,100vw);z-index:7;background:var(--surface);border-left:1px solid var(--border);
   box-shadow:var(--shadow);transform:translateX(105%);transition:transform .22s ease;overflow-y:auto;padding:18px 18px 40px}
 body.open #panel{transform:none}
 #panel header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
@@ -58,22 +90,33 @@ body.open #panel{transform:none}
 #panel h3{margin:22px 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
 .x{border:0;background:none;font-size:24px;line-height:1;color:var(--muted);cursor:pointer;padding:4px 8px;border-radius:8px}
 .x:hover{color:var(--text);background:var(--surface2)}
-form.row,.stack{display:grid;gap:8px}
+.stack{display:grid;gap:8px}
 .cols{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.cols3{display:grid;grid-template-columns:1.5fr .8fr .8fr;gap:8px}
 input{width:100%;padding:9px 11px;border-radius:10px;border:1px solid var(--border);background:var(--bg);outline:none;min-width:0}
 input:focus{border-color:var(--accent)}
+input[type=color]{padding:2px;width:42px;height:34px;flex:none;cursor:pointer}
 label{display:grid;gap:4px;font-size:12px;color:var(--muted)}
 .btn{padding:8px 13px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;white-space:nowrap}
 .btn:hover{border-color:var(--accent)}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .btn.danger:hover{border-color:var(--down);color:var(--down)}
 .btn.sm{padding:4px 9px;font-size:13px;border-radius:8px}
+.btn.on{background:var(--accent);border-color:var(--accent);color:#fff}
 .btns{display:flex;gap:8px;flex-wrap:wrap}
+.seg{display:flex;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.seg button{flex:1;border:0;background:none;padding:8px;cursor:pointer}
+.seg button.on{background:var(--accent);color:#fff}
+.arow{display:grid;gap:6px;padding:8px;border:1px solid var(--border);border-radius:12px;background:var(--bg)}
+.arow input{background:var(--surface)}
+.arow2{display:flex;gap:6px}
 ul{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:6px}
 li{display:flex;align-items:center;gap:6px;padding:7px 8px 7px 11px;border-radius:10px;background:var(--bg);border:1px solid var(--border)}
 li .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 li .t small{display:block;color:var(--muted);overflow:hidden;text-overflow:ellipsis}
 li .btn{padding:3px 8px}
+li .gd{width:10px;height:10px;border-radius:50%;flex:none}
+li.grp{padding:6px 8px}
 .note{color:var(--muted);font-size:13px;margin:6px 0}
 .err{color:var(--down)}
 #toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,20px);z-index:9;background:var(--text);color:var(--bg);padding:9px 16px;
@@ -83,7 +126,7 @@ li .btn{padding:3px 8px}
 </head>
 <body>
 <main id="grid"></main>
-<div id="empty" hidden><div><b>No services yet</b>Hover the bottom-right corner and open settings to add one.</div></div>
+<div id="empty" hidden><div><b>No services yet</b>Tap the faint gear in the bottom-right corner to add one.</div></div>
 
 <button id="gear" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
 <div id="scrim"></div>
@@ -91,7 +134,11 @@ li .btn{padding:3px 8px}
 <aside id="panel" aria-hidden="true">
   <header><h2>watchcat</h2><button class="x" id="close" aria-label="Close">×</button></header>
 
+  <h3>Display</h3>
+  <div class="seg"><button id="mfit" title="Shrink tiles so every service is on one screen">Fit all</button><button id="mscroll" title="Bigger tiles, scroll the page">Bigger + scroll</button></div>
+
   <section id="login" hidden>
+    <h3>Edit</h3>
     <p class="note">Viewing is open. Log in to make changes.</p>
     <form class="stack" id="lform">
       <input type="password" id="pw" placeholder="Password" autocomplete="current-password">
@@ -102,11 +149,23 @@ li .btn{padding:3px 8px}
   <div id="admin" hidden>
     <h3>Services</h3>
     <form class="stack" id="sform">
-      <div class="cols"><input id="sname" placeholder="Name" maxlength="60"><input id="sicon" placeholder="Icon (emoji, optional)" maxlength="8"></div>
-      <input id="surl" placeholder="URL, e.g. http://192.168.1.5:8096" required>
+      <div class="cols3">
+        <input id="sname" placeholder="Name" maxlength="60">
+        <input id="sicon" placeholder="Icon" maxlength="8" title="Optional emoji or letters. Empty = the site's own favicon">
+        <input id="sgroup" type="number" min="0" max="999" placeholder="Group" title="Higher number shows first, same number = same color, 0 = no group">
+      </div>
+      <div class="stack" id="arows"></div>
+      <div><button type="button" class="btn sm" id="aadd">+ address</button></div>
+      <p class="note" style="margin:0">One tile can hold several addresses (e.g. local + remote). “port only” just checks that the port accepts connections; clicking it copies host:port.</p>
       <div class="btns"><button class="btn primary" id="ssave">Add</button><button type="button" class="btn" id="scancel" hidden>Cancel</button></div>
     </form>
     <ul id="slist"></ul>
+
+    <div id="gsec" hidden>
+      <h3>Groups</h3>
+      <ul id="glist" style="margin-top:0"></ul>
+      <div class="btns" style="margin-top:10px"><button class="btn" id="gsave">Save groups</button></div>
+    </div>
 
     <h3>Backups</h3>
     <form class="stack" id="bform">
@@ -130,6 +189,7 @@ li .btn{padding:3px 8px}
 <script>
 "use strict";
 let S = __STATE__;
+S.groups = S.groups || {};
 const $ = id => document.getElementById(id);
 const h = (tag, attrs, ...kids) => {
   const e = document.createElement(tag);
@@ -137,6 +197,7 @@ const h = (tag, attrs, ...kids) => {
   e.append(...kids);
   return e;
 };
+const clamp = (lo, v, hi) => Math.max(lo, Math.min(hi, v));
 let toastT;
 function toast(msg) {
   const t = $("toast"); t.textContent = msg; t.classList.add("show");
@@ -153,56 +214,217 @@ async function api(method, url, body, raw) {
   return d;
 }
 const act = fn => async (...a) => { try { await fn(...a); } catch (e) { toast(e.message); } };
-
-/* ---------- grid ---------- */
-const GAP = 14, PAD = 20, RATIO = 1.35, MAXW = 380, MINW = 150;
-function layout() {
-  const n = S.services.length; if (!n) return;
-  const W = innerWidth - PAD * 2, H = innerHeight - PAD * 2;
-  let best = null;
-  for (let cols = 1; cols <= n; cols++) {
-    const rows = Math.ceil(n / cols);
-    const cw = (W - GAP * (cols - 1)) / cols, ch = (H - GAP * (rows - 1)) / rows;
-    if (cw < 100 && cols > 1) break;
-    let w = Math.min(cw, ch * RATIO, MAXW);
-    w = Math.max(w, Math.min(cw, MINW));
-    if (!best || w > best.w + 1 || (Math.abs(w - best.w) <= 1 && rows < best.rows)) best = {cols, rows, w};
-  }
-  const g = $("grid");
-  g.style.gridTemplateColumns = `repeat(${best.cols},${Math.floor(best.w)}px)`;
-  g.style.gridAutoRows = `${Math.floor(best.w / RATIO)}px`;
+function copy(t) {
+  const done = () => toast("Copied " + t);
+  const fallback = () => {   // plain-http LAN pages have no Clipboard API
+    const x = h("textarea"); x.value = t; x.style.cssText = "position:fixed;opacity:0";
+    document.body.append(x); x.select();
+    try { document.execCommand("copy"); done(); } catch (e) { toast(t); }
+    x.remove();
+  };
+  if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(t).then(done, fallback); else fallback();
 }
-const cls = s => s.up === true ? "up" : s.up === false ? "down" : "pend";
-const hostOf = u => { try { return new URL(u).host; } catch (e) { return u; } };
-let lastKey = "";
-const pillText = s => s.up === true ? s.ms + " ms" : s.up === false ? "down" : "…";
-function render() {
-  const key = JSON.stringify(S.services.map(s => [s.id, s.name, s.url, s.icon]));
-  const g = $("grid");
-  if (key !== lastKey) {
-    lastKey = key;
-    g.replaceChildren(...S.services.map(s => h("a", {class: "tile", href: s.url, target: "_blank", rel: "noopener noreferrer"},
-      h("div", {class: "top"},
-        h("div", {class: "ico", text: s.icon || [...s.name][0] || "?"}),
-        h("div", {class: "pill"}, h("span", {class: "dot"}), h("span"))),
-      h("div", {}, h("div", {class: "name", text: s.name}), h("div", {class: "host", text: hostOf(s.url)})))));
+
+/* ---------- model helpers ---------- */
+const gkey = g => g > 0 ? g : -1;            // higher group first, group 0 last
+const ordered = () => S.services.map((s, i) => [s, i]).sort((a, b) => gkey(b[0].group) - gkey(a[0].group) || a[1] - b[1]).map(x => x[0]);
+const hostOf = a => { if (a.tcp) return a.url; try { return new URL(a.url).host; } catch (e) { return a.url; } };
+const stOf = up => up === true ? "up" : up === false ? "down" : "pend";
+function overall(s) {
+  const known = s.st.filter(x => x.up !== null), up = known.filter(x => x.up).length;
+  if (!known.length) return "pend";
+  if (up === known.length) return known.length === s.st.length ? "up" : "pend";
+  return up === 0 ? "down" : "warn";
+}
+function hsl2hex(hh, s, l) {
+  s /= 100; l /= 100;
+  const k = n => (n + hh / 30) % 12, a = s * Math.min(l, 1 - l);
+  const f = n => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  return "#" + [f(0), f(8), f(4)].map(x => Math.round(x * 255).toString(16).padStart(2, "0")).join("");
+}
+const autoColor = g => hsl2hex((g * 137.508) % 360, 62, 58);   // golden-angle hues: neighbours stay distinct
+const gcolor = g => (S.groups[g] && S.groups[g].color) || autoColor(g);
+
+/* ---------- tiles ---------- */
+function icoEl(s) {
+  const d = h("div", {class: "ico"});
+  const letter = () => { d.className = "ico"; d.textContent = s.icon || [...s.name][0] || "?"; };
+  if (s.icon || !s.fav) { letter(); return d; }
+  const im = h("img", {src: `/api/icon/${s.id}?v=${s.fav}`, alt: "", decoding: "async"});
+  im.onerror = letter;
+  d.className = "ico img"; d.append(im);
+  return d;
+}
+function buildTile(s) {
+  const k = s.addrs.length, a0 = s.addrs[0];
+  const t = k > 1 ? h("div", {class: "tile multi"})
+    : a0.tcp ? h("button", {type: "button", class: "tile"})
+    : h("a", {class: "tile", href: a0.url, target: "_blank", rel: "noopener noreferrer"});
+  if (s.group > 0) { t.classList.add("g"); t.style.setProperty("--gc", gcolor(s.group)); }
+  t.title = s.name + (s.group > 0 ? " · " + ((S.groups[s.group] || {}).name || "group " + s.group) : "");
+  const pt = h("span", {class: "pt"}), pill = h("div", {class: "pill"}, h("span", {class: "dot"}), pt);
+  if (k === 1) {
+    if (a0.tcp) t.onclick = () => copy(a0.url);
+    t.append(h("div", {class: "top"}, icoEl(s), pill),
+      h("div", {class: "bot"}, h("div", {class: "name", text: s.name}),
+        h("div", {class: "host", text: a0.label ? a0.label + " · " + hostOf(a0) : hostOf(a0)})));
+    t._upd = s => {
+      const x = s.st[0]; t.dataset.s = stOf(x.up);
+      pt.textContent = x.up === true ? x.ms + " ms" : x.up === false ? "down" : "…";
+    };
+    return t;
   }
-  S.services.forEach((s, i) => {
-    const t = g.children[i];
-    t.className = "tile " + cls(s);
-    t.querySelector(".pill span:last-child").textContent = pillText(s);
+  const subsEl = h("div", {class: "subs"});
+  const subs = s.addrs.map(a => {
+    const e = a.tcp ? h("button", {type: "button", class: "sub"})
+      : h("a", {class: "sub", href: a.url, target: "_blank", rel: "noopener noreferrer"});
+    if (a.tcp) e.onclick = () => copy(a.url);
+    e.title = a.url + (a.tcp ? "  (click to copy)" : "");
+    const ms = h("span", {class: "sm"});
+    e.append(h("span", {class: "dot"}), h("span", {class: "sl", text: a.label || hostOf(a)}), ms);
+    subsEl.append(e);
+    return {e, ms};
   });
-  const up = S.services.filter(s => s.up).length;
-  document.title = S.services.length ? `${up}/${S.services.length} up · watchcat` : "watchcat";
-  $("empty").hidden = S.services.length > 0;
-  layout();
-  if (panelOpen()) renderList();
+  t.append(h("div", {class: "top"}, icoEl(s), h("div", {class: "name", text: s.name}), pill), subsEl);
+  t._subs = subs; t._subsEl = subsEl;
+  t._upd = s => {
+    s.st.forEach((x, i) => {
+      subs[i].e.dataset.s = stOf(x.up);
+      subs[i].ms.textContent = x.up === true ? x.ms + " ms" : x.up === false ? "down" : "…";
+    });
+    t.dataset.s = overall(s);
+    pt.textContent = s.st.filter(x => x.up).length + "/" + s.st.length;
+  };
+  return t;
+}
+
+/* ---------- layout: tiles fill the screen edge to edge ---------- */
+const IDEAL = 1.25, SCROLL_AR = 1.35;
+const spanOf = k => k <= 2 ? 1 : k <= 4 ? 2 : 3;   // multi-address tiles get more columns
+// Dense placement into `cols` columns, then widen tiles to swallow empty cells so no row has a hole.
+function pack(spans, cols) {
+  const n = spans.length, pos = [];
+  if (spans.every(s => s === 1)) {
+    const rows = Math.ceil(n / cols), q = n - (rows - 1) * cols;   // q tiles in the last row
+    for (let i = 0; i < n - q; i++) pos.push({r: Math.floor(i / cols), c: i % cols, s: 1});
+    const base = Math.floor(cols / q), extra = cols % q;
+    for (let j = 0, c = 0; j < q; j++) { const s = base + (j < extra ? 1 : 0); pos.push({r: rows - 1, c, s}); c += s; }
+    return {pos, rows};
+  }
+  const occ = [];
+  spans.forEach((sp, i) => {
+    const s = Math.min(sp, cols);
+    for (let r = 0; ; r++) {
+      if (!occ[r]) occ[r] = Array(cols).fill(-1);
+      for (let c = 0; c + s <= cols; c++) {
+        let free = true;
+        for (let x = 0; x < s; x++) if (occ[r][c + x] >= 0) { free = false; break; }
+        if (!free) continue;
+        for (let x = 0; x < s; x++) occ[r][c + x] = i;
+        pos[i] = {r, c, s};
+        return;
+      }
+    }
+  });
+  occ.forEach(row => {
+    for (let c = 0; c < cols;) {
+      if (row[c] >= 0) { c++; continue; }
+      let e = c; while (e < cols && row[e] < 0) e++;
+      const owner = c > 0 ? row[c - 1] : row[e];
+      if (c === 0) pos[owner].c = 0;
+      pos[owner].s += e - c;
+      for (let x = c; x < e; x++) row[x] = owner;
+      c = e;
+    }
+  });
+  return {pos, rows: occ.length};
+}
+function subGrid(k, W, H, ig) {
+  let best = null;
+  for (let c = 1; c <= k; c++) {
+    const r = Math.ceil(k / c), cw = (W - ig * (c - 1)) / c, ch = (H - ig * (r - 1)) / r, sc = Math.min(cw / 1.5, ch);
+    if (!best || sc > best.sc + .5) best = {c, r, cw, ch, sc};
+  }
+  return best;
+}
+function sizeTile(t, tw, th, k) {
+  const m = Math.min(tw, th), tp = clamp(5, m * .07, 18), st = t.style;
+  st.setProperty("--tp", tp + "px"); st.setProperty("--r", clamp(8, m * .12, 20) + "px");
+  t.dataset.sz = tw < 92 || th < 70 ? "xs" : tw < 135 || th < 100 ? "sm" : "md";
+  if (k === 1) {
+    const ns = clamp(10, Math.min(tw * .11, th * .17), 32);
+    st.setProperty("--ns", ns + "px"); st.setProperty("--hs", clamp(9, ns * .5, 14) + "px");
+    st.setProperty("--is", clamp(20, Math.min(tw * .2, th * .28), 60) + "px");
+    return;
+  }
+  const hh = clamp(16, th * .2, 38), ig = clamp(3, m * .03, 6);
+  st.setProperty("--hh", hh + "px"); st.setProperty("--ig", ig + "px");
+  st.setProperty("--ns", clamp(9, hh * .5, 20) + "px"); st.setProperty("--hs", clamp(9, hh * .38, 13) + "px");
+  const sg = subGrid(k, tw - 2 * tp, th - 2 * tp - hh - ig, ig);
+  const sp = pack(Array(k).fill(1), sg.c), se = t._subsEl.style;
+  se.gridTemplateColumns = `repeat(${sg.c},minmax(0,1fr))`; se.gridTemplateRows = `repeat(${sg.r},minmax(0,1fr))`;
+  const sf = clamp(7, Math.min(sg.cw / 7, sg.ch / 2.1), 15);
+  t._subs.forEach((o, i) => {
+    const q = sp.pos[i], w = q.s * sg.cw + (q.s - 1) * ig;   // widened tiles are wider than the base cell
+    o.e.style.gridColumn = `${q.c + 1} / span ${q.s}`; o.e.style.gridRow = q.r + 1;
+    o.e.style.fontSize = sf + "px";
+    o.e.classList.toggle("two", sg.ch >= 2.6 * sf + 8 && w >= 64);
+    o.e.classList.toggle("nm", w < 54);
+  });
+}
+let mode = "fit";
+try { if (localStorage.getItem("wc_mode") === "scroll") mode = "scroll"; } catch (e) {}
+let ord = [];
+function layout() {
+  const g = $("grid"), n = ord.length, root = document.documentElement, fit = mode === "fit";
+  root.style.overflow = fit ? "hidden" : "";
+  if (!n) return;
+  const gap = fit ? (n > 24 ? 6 : n > 10 ? 8 : 12) : 14, pad = fit ? gap + 2 : 18;
+  const W = root.clientWidth - 2 * pad, H = Math.max(60, innerHeight - 2 * pad);
+  const spans = ord.map(s => spanOf(s.addrs.length));
+  let best = null;
+  if (fit) {
+    for (let cols = 1; cols <= Math.min(24, n + 2); cols++) {
+      const p = pack(spans, cols), cw = (W - gap * (cols - 1)) / cols, ch = (H - gap * (p.rows - 1)) / p.rows;
+      const sc = Math.abs(Math.log(Math.max(1, cw) / Math.max(1, ch) / IDEAL));
+      if (!best || sc < best.sc - 1e-6) best = {cols, p, cw, ch, sc};
+    }
+  } else {
+    const cols = Math.max(1, Math.min(n, Math.floor((W + gap) / ((W < 600 ? 170 : 300) + gap))));
+    const cw = (W - gap * (cols - 1)) / cols;
+    best = {cols, p: pack(spans, cols), cw, ch: cw / SCROLL_AR};
+  }
+  const {cols, p, cw} = best, ch = Math.floor(best.ch);
+  const s = g.style;
+  s.gridTemplateColumns = `repeat(${cols},minmax(0,1fr))`; s.gridTemplateRows = `repeat(${p.rows},${ch}px)`;
+  s.gap = gap + "px"; s.padding = pad + "px";
+  s.height = fit ? innerHeight + "px" : "auto";
+  ord.forEach((sv, i) => {
+    const t = g.children[i], q = p.pos[i];
+    if (!t) return;
+    t.style.gridColumn = `${q.c + 1} / span ${q.s}`; t.style.gridRow = q.r + 1;
+    sizeTile(t, q.s * cw + (q.s - 1) * gap, ch, sv.addrs.length);
+  });
+}
+
+let lastKey = "";
+function render() {
+  ord = ordered();
+  const key = JSON.stringify([ord.map(s => [s.id, s.name, s.icon, s.group, s.fav, s.addrs]), S.groups]);
+  const g = $("grid"), changed = key !== lastKey;
+  if (changed) { lastKey = key; g.replaceChildren(...ord.map(buildTile)); }
+  ord.forEach((s, i) => g.children[i]._upd(s));
+  const up = ord.filter(s => overall(s) === "up").length;
+  document.title = ord.length ? `${up}/${ord.length} up · watchcat` : "watchcat";
+  $("empty").hidden = ord.length > 0;
+  if (changed) { layout(); if (panelOpen()) { renderList(); renderGroups(); } }
 }
 async function poll() {
   if (document.hidden) return;
   try { const r = await fetch("/api/state"); if (r.ok) { S = await r.json(); render(); applyAuth(); } } catch (e) {}
 }
 addEventListener("resize", layout);
+addEventListener("orientationchange", () => setTimeout(layout, 200));
 document.addEventListener("visibilitychange", poll);
 setInterval(poll, 10000);
 
@@ -211,15 +433,21 @@ const panelOpen = () => document.body.classList.contains("open");
 function openPanel(v) {
   document.body.classList.toggle("open", v);
   $("panel").setAttribute("aria-hidden", !v);
-  if (v) { applyAuth(); if (S.authed || !S.auth_required) loadBackups(); }
+  if (v) { applyAuth(); if (S.authed || !S.auth_required) { renderList(); renderGroups(); loadBackups(); } }
 }
 function applyAuth() {
   const can = !S.auth_required || S.authed;
   $("login").hidden = can;
   $("admin").hidden = !can;
   $("who").hidden = !(S.auth_required && S.authed);
-  if (can && panelOpen()) renderList();
 }
+function setMode(m) {
+  mode = m;
+  try { localStorage.setItem("wc_mode", m); } catch (e) {}
+  $("mfit").classList.toggle("on", m === "fit"); $("mscroll").classList.toggle("on", m === "scroll");
+  layout();
+}
+$("mfit").onclick = () => setMode("fit"); $("mscroll").onclick = () => setMode("scroll");
 $("gear").onclick = () => openPanel(!panelOpen());
 $("close").onclick = $("scrim").onclick = () => openPanel(false);
 addEventListener("keydown", e => { if (e.key === "Escape") openPanel(false); });
@@ -227,24 +455,47 @@ addEventListener("keydown", e => { if (e.key === "Escape") openPanel(false); });
 $("lform").onsubmit = act(async e => {
   e.preventDefault();
   await api("POST", "/api/login", {password: $("pw").value});
-  $("pw").value = ""; S.authed = true; applyAuth(); loadBackups();
+  $("pw").value = ""; S.authed = true; applyAuth(); renderList(); renderGroups(); loadBackups();
 });
 $("logout").onclick = act(async e => { e.preventDefault(); await api("POST", "/api/logout"); S.authed = false; applyAuth(); });
 
-/* services */
-let editId = null;
-function resetForm() { editId = null; $("sform").reset(); $("ssave").textContent = "Add"; $("scancel").hidden = true; }
+/* services form */
+let editId = null, arows = [];
+function syncDel() { arows.forEach(r => r.del.disabled = arows.length < 2); $("aadd").disabled = arows.length >= 16; }
+function addRow(a) {
+  a = a || {};
+  const url = h("input", {maxlength: 500, autocapitalize: "off", spellcheck: "false"});
+  const label = h("input", {placeholder: "label (local, remote…)", maxlength: 24});
+  const kind = h("button", {type: "button", class: "btn sm", title: "Port only: no web page, just checks that the port accepts connections"});
+  const del = h("button", {type: "button", class: "btn sm danger", title: "Remove address", text: "−"});
+  const el = h("div", {class: "arow"}, url, h("div", {class: "arow2"}, label, kind, del));
+  const r = {el, url, label, del, tcp: !!a.tcp};
+  const sync = () => {
+    kind.textContent = r.tcp ? "port only" : "web"; kind.classList.toggle("on", r.tcp);
+    url.placeholder = r.tcp ? "host:port, e.g. 192.168.1.5:25565" : "URL, e.g. http://192.168.1.5:8096";
+  };
+  kind.onclick = () => { r.tcp = !r.tcp; sync(); };
+  del.onclick = () => { if (arows.length > 1) { arows = arows.filter(x => x !== r); el.remove(); syncDel(); } };
+  url.value = a.url || ""; label.value = a.label || "";
+  arows.push(r); $("arows").append(el); sync(); syncDel();
+}
+const readAddrs = () => arows.map(r => ({url: r.url.value.trim(), label: r.label.value.trim(), tcp: r.tcp})).filter(a => a.url);
+function resetForm() {
+  editId = null; $("sform").reset(); $("arows").replaceChildren(); arows = []; addRow();
+  $("ssave").textContent = "Add"; $("scancel").hidden = true;
+}
+$("aadd").onclick = () => addRow();
 $("scancel").onclick = resetForm;
 $("sform").onsubmit = act(async e => {
   e.preventDefault();
-  const body = {name: $("sname").value, url: $("surl").value, icon: $("sicon").value};
+  const body = {name: $("sname").value, icon: $("sicon").value, group: $("sgroup").value || 0, addrs: readAddrs()};
   S = editId ? await api("PUT", "/api/services/" + editId, body) : await api("POST", "/api/services", body);
   resetForm(); render(); setTimeout(poll, 1500); setTimeout(poll, 5500);
 });
-const move = act(async (i, d) => {
-  const ids = S.services.map(s => s.id); const j = i + d;
-  if (j < 0 || j >= ids.length) return;
-  [ids[i], ids[j]] = [ids[j], ids[i]];
+const move = act(async (list, i, d) => {
+  const j = i + d;
+  if (j < 0 || j >= list.length || list[j].group !== list[i].group) return;
+  const ids = list.map(s => s.id); [ids[i], ids[j]] = [ids[j], ids[i]];
   S = await api("POST", "/api/services/reorder", {ids}); render();
 });
 const del = act(async s => {
@@ -252,17 +503,46 @@ const del = act(async s => {
   S = await api("DELETE", "/api/services/" + s.id); if (editId === s.id) resetForm(); render();
 });
 function edit(s) {
-  editId = s.id; $("sname").value = s.name; $("surl").value = s.url; $("sicon").value = s.icon || "";
+  editId = s.id; $("sname").value = s.name; $("sicon").value = s.icon || ""; $("sgroup").value = s.group || "";
+  $("arows").replaceChildren(); arows = []; s.addrs.forEach(addRow);
   $("ssave").textContent = "Save"; $("scancel").hidden = false; $("sname").focus();
 }
 function renderList() {
-  $("slist").replaceChildren(...S.services.map((s, i) => {
+  const list = ordered();
+  $("slist").replaceChildren(...list.map((s, i) => {
     const b = (t, title, fn, c) => { const x = h("button", {class: "btn sm " + (c || ""), title, text: t, type: "button"}); x.onclick = fn; return x; };
-    return h("li", {}, h("div", {class: "t"}, document.createTextNode(s.name), h("small", {text: hostOf(s.url)})),
-      b("↑", "Move up", () => move(i, -1)), b("↓", "Move down", () => move(i, 1)),
+    const dot = h("span", {class: "gd"}); dot.style.background = s.group > 0 ? gcolor(s.group) : "var(--border)";
+    const sub = s.addrs.length > 1 ? s.addrs.length + " addresses" : hostOf(s.addrs[0]);
+    return h("li", {}, dot, h("div", {class: "t"}, document.createTextNode(s.name),
+        h("small", {text: sub + (s.group > 0 ? " · group " + s.group : "")})),
+      b("↑", "Move up", () => move(list, i, -1)), b("↓", "Move down", () => move(list, i, 1)),
       b("✎", "Edit", () => edit(s)), b("✕", "Remove", () => del(s), "danger"));
   }));
 }
+
+/* groups: optional name + color per group number */
+let gdraft = {};
+function renderGroups() {
+  const nums = [...new Set(S.services.map(s => s.group).filter(g => g > 0))].sort((a, b) => b - a);
+  $("gsec").hidden = !nums.length;
+  gdraft = {};
+  $("glist").replaceChildren(...nums.map(g => {
+    const cur = S.groups[g] || {};
+    const d = gdraft[g] = {name: cur.name || "", color: cur.color || ""};
+    const color = h("input", {type: "color", title: "Group color"}); color.value = d.color || autoColor(g);
+    const name = h("input", {placeholder: "Group " + g + " name", maxlength: 30}); name.value = d.name;
+    const auto = h("button", {type: "button", class: "btn sm", title: "Back to automatic color", text: "auto"});
+    color.oninput = () => d.color = color.value;
+    name.oninput = () => d.name = name.value;
+    auto.onclick = () => { d.color = ""; color.value = autoColor(g); };
+    return h("li", {class: "grp"}, color, h("span", {class: "note", style: "margin:0;width:2.2em;text-align:center", text: "#" + g}), name, auto);
+  }));
+}
+$("gsave").onclick = act(async () => {
+  const out = {};
+  for (const g in gdraft) if (gdraft[g].name.trim() || gdraft[g].color) out[g] = {name: gdraft[g].name.trim(), color: gdraft[g].color};
+  S = await api("PUT", "/api/groups", {groups: out}); render(); toast("Saved");
+});
 
 /* backups */
 const fmt = t => new Date(t * 1000).toLocaleString([], {dateStyle: "medium", timeStyle: "short"});
@@ -294,7 +574,8 @@ $("bfile").onchange = act(async e => {
   toast("Restored"); await poll(); setTimeout(poll, 3000);
 });
 
-render(); applyAuth();
+$("mfit").classList.toggle("on", mode === "fit"); $("mscroll").classList.toggle("on", mode === "scroll");
+resetForm(); render(); applyAuth();
 </script>
 </body>
 </html>
