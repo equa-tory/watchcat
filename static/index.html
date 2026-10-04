@@ -465,7 +465,7 @@ function syncDel() { arows.forEach(r => r.del.disabled = arows.length < 2); $("a
 function addRow(a) {
   a = a || {};
   const url = h("input", {maxlength: 500, autocapitalize: "off", spellcheck: "false"});
-  const label = h("input", {placeholder: "label (local, remote…)", maxlength: 24});
+  const label = h("input", {placeholder: "Label (optional): local, remote…", maxlength: 80});
   const kind = h("button", {type: "button", class: "btn sm", title: "Port only: no web page, just checks that the port accepts connections"});
   const del = h("button", {type: "button", class: "btn sm danger", title: "Remove address", text: "−"});
   const el = h("div", {class: "arow"}, url, h("div", {class: "arow2"}, label, kind, del));

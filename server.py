@@ -118,7 +118,7 @@ def clean_addr(a):
     if not isinstance(a, dict):
         raise Err(400, "Invalid address")
     raw = str(a.get("url", "")).strip()[:500]
-    label = str(a.get("label") or "").strip()[:24]
+    label = str(a.get("label") or "").strip()[:80]
     if a.get("tcp"):
         m = _TCP_RE.fullmatch(raw)
         if not m or not 1 <= int(m.group(2)) <= 65535:
