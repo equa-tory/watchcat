@@ -68,6 +68,15 @@ a.tile:hover,button.tile:hover,a.tile:focus-visible,button.tile:focus-visible{tr
 .sub.two .sm{grid-area:1/2;justify-self:end}
 .sub.two .sl{grid-area:2/1/3/3;align-self:end;font-size:1.1em}
 
+.hist{display:none;margin-top:.55em;min-width:0}
+[data-h] .hist{display:block}
+.multi .hist{margin-top:var(--ig,4px);flex:none}
+.hbar{height:var(--bh,5px);border-radius:3px;overflow:hidden;background:color-mix(in srgb,var(--text) 9%,transparent)}
+.hbar svg{display:block;width:100%;height:100%}
+.hu{fill:var(--up);opacity:.45}.hd{fill:var(--down)}.hw{fill:var(--warn)}
+.hl{margin-top:.3em;font-size:calc(var(--hs,12px)*.9);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
+.hl.bad{color:var(--down)}
+[data-h=bar] .hl{display:none}
 #empty{position:fixed;inset:0;display:grid;place-items:center;text-align:center;color:var(--muted);pointer-events:none;padding:20px}
 #empty b{display:block;color:var(--text);font-size:22px;margin-bottom:6px}
 [hidden]{display:none!important}
@@ -136,6 +145,8 @@ li.grp{padding:6px 8px}
 
   <h3>Display</h3>
   <div class="seg"><button id="mfit" title="Shrink tiles so every service is on one screen">Fit all</button><button id="mscroll" title="Bigger tiles, scroll the page">Bigger + scroll</button></div>
+  <p class="note" style="margin:12px 0 6px">Outage graph on each tile</p>
+  <div class="seg" id="hseg"><button data-w="0">Off</button><button data-w="1">24 h</button><button data-w="7">7 days</button><button data-w="30">30 days</button></div>
 
   <section id="login" hidden>
     <h3>Edit</h3>
@@ -255,6 +266,11 @@ function icoEl(s) {
   d.className = "ico img"; d.append(im);
   return d;
 }
+function histEl(t) {
+  const bar = h("div", {class: "hbar"}), lbl = h("div", {class: "hl"}), el = h("div", {class: "hist"}, bar, lbl);
+  t._hist = (ev, t0, t1) => drawTileHist(el, bar, lbl, ev, t0, t1);
+  return el;
+}
 function buildTile(s) {
   const k = s.addrs.length, a0 = s.addrs[0];
   const t = k > 1 ? h("div", {class: "tile multi"})
@@ -267,7 +283,7 @@ function buildTile(s) {
     if (a0.tcp) t.onclick = () => copy(a0.url);
     t.append(h("div", {class: "top"}, icoEl(s), pill),
       h("div", {class: "bot"}, h("div", {class: "name", text: s.name}),
-        h("div", {class: "host", text: a0.label ? a0.label + " · " + hostOf(a0) : hostOf(a0)})));
+        h("div", {class: "host", text: a0.label ? a0.label + " · " + hostOf(a0) : hostOf(a0)}), histEl(t)));
     t._upd = s => {
       const x = s.st[0]; t.dataset.s = stOf(x.up);
       pt.textContent = x.up === true ? x.ms + " ms" : x.up === false ? "down" : "…";
@@ -285,7 +301,7 @@ function buildTile(s) {
     subsEl.append(e);
     return {e, ms};
   });
-  t.append(h("div", {class: "top"}, icoEl(s), h("div", {class: "name", text: s.name}), pill), subsEl);
+  t.append(h("div", {class: "top"}, icoEl(s), h("div", {class: "name", text: s.name}), pill), subsEl, histEl(t));
   t._subs = subs; t._subsEl = subsEl;
   t._upd = s => {
     s.st.forEach((x, i) => {
@@ -347,20 +363,75 @@ function subGrid(k, W, H, ig) {
   }
   return best;
 }
+/* ---------- outage history: state changes only, drawn as a thin timeline per tile ---------- */
+let H = {}, skew = 0, hvLoaded = -1, histWin = 7;   // histWin in days, 0 = off
+try { const v = localStorage.getItem("wc_hist"); if (["0", "1", "7", "30"].includes(v)) histWin = +v; } catch (e) {}
+const p2 = n => String(n).padStart(2, "0");
+const fmtT = ts => { const d = new Date(ts * 1000); return `${p2(d.getMonth() + 1)}/${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`; };   // mm/dd hh:mm
+const fmtD = s => s < 60 ? "<1m" : s < 3600 ? Math.round(s / 60) + "m" : s < 86400 ? Math.floor(s / 3600) + "h " + Math.floor(s % 3600 / 60) + "m" : Math.floor(s / 86400) + "d " + Math.floor(s % 86400 / 3600) + "h";
+const SVGNS = "http://www.w3.org/2000/svg";
+function drawTileHist(el, bar, lbl, ev, t0, t1) {
+  if (!el.parentNode || !el.closest("[data-h]")) return;
+  const span = t1 - t0, svg = document.createElementNS(SVGNS, "svg");
+  svg.setAttribute("viewBox", "0 0 1000 10"); svg.setAttribute("preserveAspectRatio", "none");
+  const rect = (a, b, cls) => {
+    const w = Math.max(3, (Math.min(b, t1) - Math.max(a, t0)) / span * 1000);   // never thinner than a sliver
+    const x = Math.min((Math.max(a, t0) - t0) / span * 1000, 1000 - w), r = document.createElementNS(SVGNS, "rect");
+    r.setAttribute("x", x.toFixed(1)); r.setAttribute("width", w.toFixed(1)); r.setAttribute("height", 10); r.setAttribute("class", cls);
+    svg.append(r);
+  };
+  const segs = ev.map((e, i) => [e[0], i + 1 < ev.length ? ev[i + 1][0] : t1, e[1]]).filter(x => x[2] !== 3 && x[1] > t0 && x[0] < t1);
+  segs.filter(x => x[2] === 1).forEach(x => rect(x[0], x[1], "hu"));            // up first, outages drawn on top
+  segs.filter(x => x[2] !== 1).forEach(x => rect(x[0], x[1], x[2] === 0 ? "hd" : "hw"));
+  bar.replaceChildren(svg);
+  const out = ev.map((e, i) => ({a: e[0], b: i + 1 < ev.length ? ev[i + 1][0] : null, s: e[1]})).filter(o => o.s === 0 || o.s === 2);
+  const last = out[out.length - 1], word = o => o.s === 0 ? "down" : "degraded";
+  lbl.classList.toggle("bad", !!last && last.b === null);
+  lbl.textContent = !ev.length ? "collecting…" : !last ? "no outages"
+    : last.b === null ? `${word(last)} since ${fmtT(last.a)}` : `last ${word(last)} ${fmtT(last.a)} · ${fmtD(last.b - last.a)}`;
+  el.title = out.length ? out.slice(-6).reverse().map(o => `${fmtT(o.a)} → ${o.b === null ? "now" : fmtT(o.b)} · ${fmtD((o.b || t1) - o.a)} ${word(o)}`).join("\n") : "No outages recorded";
+}
+function drawHist() {
+  if (!histWin) return;
+  const t1 = Date.now() / 1000 + skew, t0 = t1 - histWin * 86400, g = $("grid");
+  ord.forEach((s, i) => { const t = g.children[i]; if (t && t._hist && t.dataset.h) t._hist(H[s.id] || [], t0, t1); });
+}
+async function loadHist() {
+  try {
+    const d = await (await fetch("/api/history")).json();
+    H = d.ev || {}; skew = d.now - Date.now() / 1000; hvLoaded = S.hv; drawHist();
+  } catch (e) {}
+}
+function setHist(w) {
+  histWin = w;
+  try { localStorage.setItem("wc_hist", String(w)); } catch (e) {}
+  document.querySelectorAll("#hseg button").forEach(b => b.classList.toggle("on", +b.dataset.w === w));
+  layout();
+}
+document.querySelectorAll("#hseg button").forEach(b => b.onclick = () => setHist(+b.dataset.w));
+setInterval(drawHist, 60000);
+
 function sizeTile(t, tw, th, k) {
   const m = Math.min(tw, th), tp = clamp(5, m * .07, 18), st = t.style;
   st.setProperty("--tp", tp + "px"); st.setProperty("--r", clamp(8, m * .12, 20) + "px");
   t.dataset.sz = tw < 92 || th < 70 ? "xs" : tw < 135 || th < 100 ? "sm" : "md";
+  // outage graph only where there is room: a bar on medium tiles, bar + text line on big ones
+  const hm = histWin ? (th >= 150 && tw >= 140 ? "full" : th >= 110 && tw >= 100 ? "bar" : "") : "";
+  if (hm) t.dataset.h = hm; else delete t.dataset.h;
+  const bh = clamp(3, th * .03, 6);
+  st.setProperty("--bh", bh + "px");
   if (k === 1) {
-    const ns = clamp(10, Math.min(tw * .11, th * .17), 32);
+    const ns = clamp(10, Math.min(tw * .11, th * (hm ? .15 : .17)), 32);
     st.setProperty("--ns", ns + "px"); st.setProperty("--hs", clamp(9, ns * .5, 14) + "px");
     st.setProperty("--is", clamp(20, Math.min(tw * .2, th * .28), 60) + "px");
     return;
   }
   const hh = clamp(16, th * .2, 38), ig = clamp(3, m * .03, 6);
   st.setProperty("--hh", hh + "px"); st.setProperty("--ig", ig + "px");
-  st.setProperty("--ns", clamp(9, hh * .5, 20) + "px"); st.setProperty("--hs", clamp(9, hh * .38, 13) + "px");
-  const sg = subGrid(k, tw - 2 * tp, th - 2 * tp - hh - ig, ig);
+  const hsv = clamp(9, hh * .38, 13);
+  st.setProperty("--ns", clamp(9, hh * .5, 20) + "px"); st.setProperty("--hs", hsv + "px");
+  const hr = hm ? bh + ig + (hm === "full" ? hsv * 1.2 + 3 : 0) : 0;   // room taken by the outage graph
+  const sg = subGrid(k, tw - 2 * tp, th - 2 * tp - hh - ig - hr, ig);
   const sp = pack(Array(k).fill(1), sg.c), se = t._subsEl.style;
   se.gridTemplateColumns = `repeat(${sg.c},minmax(0,1fr))`; se.gridTemplateRows = `repeat(${sg.r},minmax(0,1fr))`;
   const sf = clamp(7, Math.min(sg.cw / 7, sg.ch / 2.1), 15);
@@ -405,6 +476,7 @@ function layout() {
     t.style.gridColumn = `${q.c + 1} / span ${q.s}`; t.style.gridRow = q.r + 1;
     sizeTile(t, q.s * cw + (q.s - 1) * gap, ch, sv.addrs.length);
   });
+  drawHist();
 }
 
 let lastKey = "";
@@ -421,7 +493,7 @@ function render() {
 }
 async function poll() {
   if (document.hidden) return;
-  try { const r = await fetch("/api/state"); if (r.ok) { S = await r.json(); render(); applyAuth(); } } catch (e) {}
+  try { const r = await fetch("/api/state"); if (r.ok) { S = await r.json(); render(); applyAuth(); if (S.hv !== hvLoaded) loadHist(); } } catch (e) {}
 }
 addEventListener("resize", layout);
 addEventListener("orientationchange", () => setTimeout(layout, 200));
@@ -575,7 +647,8 @@ $("bfile").onchange = act(async e => {
 });
 
 $("mfit").classList.toggle("on", mode === "fit"); $("mscroll").classList.toggle("on", mode === "scroll");
-resetForm(); render(); applyAuth();
+document.querySelectorAll("#hseg button").forEach(b => b.classList.toggle("on", +b.dataset.w === histWin));
+resetForm(); render(); applyAuth(); loadHist();
 </script>
 </body>
 </html>

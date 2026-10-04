@@ -26,6 +26,7 @@ Tap the faint gear in the bottom-right corner (it lights up on hover): add, edit
 - **Groups**: give services a group number. Same number = same color and placed side by side; **lower numbers come first** (1, 2, 3...), group `0` (default) comes last. Colors are fixed per number (golden-angle hues, so they never change between reloads); under *Groups* you can give a group a name and pick its color.
 - **Several addresses per tile** (e.g. local + remote): use **+ address**. The tile shows one clickable sub-block per address, each with its own status; the tile dot is green when all are up, amber when some are down.
 - **Port-only services** (no web page, e.g. a game server or SSH): switch an address from *web* to *port only* and enter `host:port`. It is checked with a TCP connect; clicking it copies `host:port`.
+- **Outage graph**: each tile shows a thin timeline (green = up, red = down, amber = some addresses down, empty = watchcat wasn't running) plus a line such as `last down 10/03 14:20 · 12m` or `down since 10/04 09:15`. Hover the graph for the last 6 outages. Pick 24 h / 7 days / 30 days (or Off) under Settings -> Display. It only appears on tiles big enough to hold it, so "fit all" on a phone with many services stays clean. A single failed check is not counted as an outage (it must fail twice in a row, and the outage is dated from the first failure). History is kept for 31 days in `data/history.json`; it stores state *changes* only, so it stays tiny and costs nothing noticeable.
 - A web URL without a scheme is treated as `http://`. A web address is **up** when it answers with any HTTP status below 500 (login pages and 401/403 count as up); self-signed HTTPS certificates are accepted and environment proxies are ignored.
 
 ## Password (optional)
@@ -50,7 +51,7 @@ Settings panel -> Backups. Defaults: folder `/mnt/ssd/backups/watchcat`, every *
 - Empty configurations are never backed up, so a wipe can't replace your only good backup.
 - If the folder is unavailable (unmounted disk, permissions) the panel shows the error; nothing crashes.
 
-Backups include services and group names/colors (icons are re-fetched). Restoring replaces the service list and groups; backup settings are kept.
+Backups include services and group names/colors (icons are re-fetched; outage history is not included). Restoring replaces the service list and groups; backup settings are kept.
 
 ## Behind a reverse proxy
 

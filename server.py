@@ -52,6 +52,7 @@ DATA = os.path.abspath(cfg("DATA_DIR", os.path.join(ROOT, "data")))
 SERVICES_FILE = os.path.join(DATA, "services.json")
 SETTINGS_FILE = os.path.join(DATA, "settings.json")
 ICONS = os.path.join(DATA, "icons")
+HIST_FILE = os.path.join(DATA, "history.json")
 PASSWORD = cfg("PASSWORD")
 HOST = cfg("HOST", "0.0.0.0")
 PORT = int(cfg("PORT", "8888"))
@@ -68,6 +69,12 @@ groups = {}  # "3" -> {name, color}
 settings = {"path": "/mnt/ssd/backups/watchcat", "interval_hours": 48, "max_backups": 1}
 backup_error = ""
 sessions = {}  # token -> expiry
+history = {}  # id -> [[ts, state], ...]  state changes only: 0 down, 1 up, 2 partial, 3 unknown (not monitored)
+hist_v = 0  # bumped on every recorded change so clients know when to refetch
+_cand = {}  # id -> (state, first_seen, count): a change must be seen twice in a row before it is recorded
+_hist_saved = 0.0
+HIST_DAYS = 31
+MAX_EVENTS = 400
 wake = threading.Event()
 icon_q = queue.Queue()
 
@@ -270,7 +277,86 @@ def checker():
                     while len(st) < len(s["addrs"]):
                         st.append({"up": None, "ms": None})
                     st[i] = {"up": up, "ms": ms}
+        try:
+            record_history(time.time())
+        except Exception as e:
+            sys.stderr.write("history error: %r\n" % (e,))
         wake.wait(CHECK_INTERVAL)
+
+
+# ---------- outage history ----------
+# Only state *changes* are stored (a few entries per day), never one sample per check, so the file stays
+# tiny, the API payload is small and drawing a tile's timeline costs a handful of SVG rects.
+
+def overall_state(s):
+    st = status.get(s["id"])
+    if not st or len(st) != len(s["addrs"]) or any(x["up"] is None for x in st):
+        return None  # not fully checked yet
+    ups = sum(1 for x in st if x["up"])
+    return 1 if ups == len(st) else 0 if ups == 0 else 2
+
+
+def save_history(now):
+    global _hist_saved
+    save_json(HIST_FILE, {"alive": now, "ev": history})
+    _hist_saved = now
+
+
+def record_history(now):
+    global hist_v
+    changed = False
+    with lock:
+        ids = {s["id"] for s in services}
+        for sid in [k for k in history if k not in ids]:
+            del history[sid]
+            changed = True
+        for sid in [k for k in _cand if k not in ids]:
+            del _cand[sid]
+        for s in services:
+            sid, cur = s["id"], overall_state(s)
+            if cur is None:
+                continue
+            ev = history.setdefault(sid, [])
+            last = ev[-1][1] if ev else None
+            if cur == last:
+                _cand.pop(sid, None)
+                continue
+            c = _cand.get(sid)
+            c = (cur, c[1], c[2] + 1) if c and c[0] == cur else (cur, now, 1)
+            _cand[sid] = c
+            if last is None or last == 3 or c[2] >= 2:  # first sight / back from not-monitored: no debounce
+                ev.append([int(max(c[1], ev[-1][0] if ev else 0)), cur])
+                del _cand[sid]
+                changed = True
+        cutoff = now - HIST_DAYS * 86400
+        for ev in history.values():
+            i = next((i for i, e in enumerate(ev) if e[0] >= cutoff), len(ev))
+            if i > 1:  # keep one older event as the anchor for the window start
+                del ev[:i - 1]
+            del ev[:-MAX_EVENTS]
+        if changed:
+            hist_v += 1
+        if changed or now - _hist_saved > 300:  # periodic save also refreshes "alive"
+            save_history(now)
+
+
+def load_history():
+    raw = load_json(HIST_FILE, {})
+    now = time.time()
+    ev = raw.get("ev") if isinstance(raw, dict) else None
+    alive = raw.get("alive") if isinstance(raw, dict) else None
+    alive = min(alive, now) if isinstance(alive, (int, float)) else now
+    with lock:
+        ids = {s["id"] for s in services}
+        for sid, e in (ev.items() if isinstance(ev, dict) else []):
+            if sid not in ids or not isinstance(e, list):
+                continue
+            ok = [[int(t), st] for t, st in (x for x in e if isinstance(x, list) and len(x) == 2)
+                  if isinstance(t, (int, float)) and st in (0, 1, 2, 3)]
+            if ok:
+                if ok[-1][1] != 3:  # watchcat was not running since `alive`: mark that gap as unknown
+                    ok.append([int(max(alive, ok[-1][0])), 3])
+                history[sid] = ok[-MAX_EVENTS:]
 
 
 # ---------- favicons ----------
@@ -488,7 +574,7 @@ def state(authed):
             o["st"] = st
             o["fav"] = s["fav"]["v"] if "fav" in s else None
             svc.append(o)
-        return {"services": svc, "groups": dict(groups), "auth_required": bool(PASSWORD), "authed": authed}
+        return {"services": svc, "groups": dict(groups), "hv": hist_v, "auth_required": bool(PASSWORD), "authed": authed}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -585,6 +671,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.json(state(self.authed()))
         if m == "GET" and len(p) == 2 and p[0] == "icon":
             return self.icon(p[1])
+        if m == "GET" and p == ["history"]:
+            with lock:
+                return self.json({"now": time.time(), "ev": history})
         if m == "POST" and p == ["login"]:
             ok = hmac.compare_digest(str(self.body(raw).get("password", "")).encode(), PASSWORD.encode())
             if not PASSWORD or not ok:
@@ -711,6 +800,7 @@ def main():
     except Err:
         pass
     persist()  # writes back migrated (multi-address) format
+    load_history()
     threading.Thread(target=checker, daemon=True).start()
     threading.Thread(target=backup_loop, daemon=True).start()
     threading.Thread(target=icon_worker, daemon=True).start()
