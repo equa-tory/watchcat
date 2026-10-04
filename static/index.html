@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>watchcat</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23151922'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%2334d399'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#0c0e13;--surface:#151922;--surface2:#1c2130;--border:#262c3b;--text:#e8ebf2;--muted:#7d869a;
+  --up:#34d399;--down:#f87171;--pend:#6b7488;--accent:#7c9cff;--shadow:0 8px 30px rgba(0,0,0,.35);
+}
+@media (prefers-color-scheme:light){:root{
+  --bg:#f3f4f8;--surface:#fff;--surface2:#f0f2f7;--border:#e0e4ec;--text:#161a23;--muted:#6a7387;
+  --up:#10b981;--down:#ef4444;--pend:#9aa3b5;--accent:#4f6fe8;--shadow:0 8px 30px rgba(30,40,70,.12);
+}}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%}
+body{background:radial-gradient(1200px 700px at 50% -10%,var(--surface2),var(--bg));background-color:var(--bg);
+  color:var(--text);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+button,input{font:inherit;color:inherit}
+#grid{display:grid;justify-content:center;align-content:center;gap:14px;min-height:100dvh;padding:20px}
+.tile{container-type:inline-size;position:relative;display:flex;flex-direction:column;justify-content:space-between;
+  padding:6cqw;border-radius:20px;background:var(--surface);border:1px solid var(--border);color:inherit;text-decoration:none;
+  overflow:hidden;transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease,opacity .2s}
+.tile:hover,.tile:focus-visible{transform:translateY(-3px);box-shadow:var(--shadow);border-color:var(--accent);outline:none}
+.tile.down{border-color:color-mix(in srgb,var(--down) 55%,var(--border));opacity:.8}
+.tile.down::before{content:"";position:absolute;inset:0;background:linear-gradient(160deg,color-mix(in srgb,var(--down) 14%,transparent),transparent 60%);pointer-events:none}
+.top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.ico{width:clamp(34px,16cqw,56px);height:clamp(34px,16cqw,56px);border-radius:28%;display:grid;place-items:center;
+  background:var(--surface2);font-size:clamp(17px,8cqw,28px);font-weight:650;text-transform:uppercase}
+.pill{display:flex;align-items:center;gap:6px;font-size:clamp(11px,4.4cqw,13px);color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--pend)}
+.up .dot{background:var(--up);box-shadow:0 0 0 3px color-mix(in srgb,var(--up) 22%,transparent),0 0 12px var(--up)}
+.down .dot{background:var(--down);box-shadow:0 0 0 3px color-mix(in srgb,var(--down) 22%,transparent),0 0 12px var(--down)}
+.name{font-size:clamp(16px,9cqw,30px);font-weight:650;letter-spacing:-.02em;line-height:1.15;overflow-wrap:anywhere;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.host{margin-top:3px;color:var(--muted);font-size:clamp(11px,4.6cqw,14px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#empty{position:fixed;inset:0;display:grid;place-items:center;text-align:center;color:var(--muted);pointer-events:none}
+#empty b{display:block;color:var(--text);font-size:22px;margin-bottom:6px}
+[hidden]{display:none!important}
+
+#gear{position:fixed;right:max(18px,env(safe-area-inset-right));bottom:max(18px,env(safe-area-inset-bottom));z-index:5;width:40px;height:40px;
+  border-radius:50%;border:1px solid var(--border);background:var(--surface);display:grid;place-items:center;cursor:pointer;
+  opacity:.16;transition:opacity .2s,transform .2s}
+#gear:hover,#gear:focus-visible,body.open #gear{opacity:1}
+#gear:hover{transform:rotate(45deg)}
+@media (hover:none){#gear{opacity:.5}}
+#gear svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+
+#scrim{position:fixed;inset:0;background:rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:opacity .2s;z-index:6}
+body.open #scrim{opacity:1;pointer-events:auto}
+#panel{position:fixed;top:0;right:0;bottom:0;width:min(400px,100vw);z-index:7;background:var(--surface);border-left:1px solid var(--border);
+  box-shadow:var(--shadow);transform:translateX(105%);transition:transform .22s ease;overflow-y:auto;padding:18px 18px 40px}
+body.open #panel{transform:none}
+#panel header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+#panel h2{margin:0;font-size:18px;letter-spacing:-.01em}
+#panel h3{margin:22px 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
+.x{border:0;background:none;font-size:24px;line-height:1;color:var(--muted);cursor:pointer;padding:4px 8px;border-radius:8px}
+.x:hover{color:var(--text);background:var(--surface2)}
+form.row,.stack{display:grid;gap:8px}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+input{width:100%;padding:9px 11px;border-radius:10px;border:1px solid var(--border);background:var(--bg);outline:none;min-width:0}
+input:focus{border-color:var(--accent)}
+label{display:grid;gap:4px;font-size:12px;color:var(--muted)}
+.btn{padding:8px 13px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);cursor:pointer;white-space:nowrap}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.danger:hover{border-color:var(--down);color:var(--down)}
+.btn.sm{padding:4px 9px;font-size:13px;border-radius:8px}
+.btns{display:flex;gap:8px;flex-wrap:wrap}
+ul{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:6px}
+li{display:flex;align-items:center;gap:6px;padding:7px 8px 7px 11px;border-radius:10px;background:var(--bg);border:1px solid var(--border)}
+li .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+li .t small{display:block;color:var(--muted);overflow:hidden;text-overflow:ellipsis}
+li .btn{padding:3px 8px}
+.note{color:var(--muted);font-size:13px;margin:6px 0}
+.err{color:var(--down)}
+#toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,20px);z-index:9;background:var(--text);color:var(--bg);padding:9px 16px;
+  border-radius:12px;opacity:0;pointer-events:none;transition:.2s;max-width:90vw}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+<main id="grid"></main>
+<div id="empty" hidden><div><b>No services yet</b>Hover the bottom-right corner and open settings to add one.</div></div>
+
+<button id="gear" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+<div id="scrim"></div>
+
+<aside id="panel" aria-hidden="true">
+  <header><h2>watchcat</h2><button class="x" id="close" aria-label="Close">×</button></header>
+
+  <section id="login" hidden>
+    <p class="note">Viewing is open. Log in to make changes.</p>
+    <form class="stack" id="lform">
+      <input type="password" id="pw" placeholder="Password" autocomplete="current-password">
+      <button class="btn primary">Log in</button>
+    </form>
+  </section>
+
+  <div id="admin" hidden>
+    <h3>Services</h3>
+    <form class="stack" id="sform">
+      <div class="cols"><input id="sname" placeholder="Name" maxlength="60"><input id="sicon" placeholder="Icon (emoji, optional)" maxlength="8"></div>
+      <input id="surl" placeholder="URL, e.g. http://192.168.1.5:8096" required>
+      <div class="btns"><button class="btn primary" id="ssave">Add</button><button type="button" class="btn" id="scancel" hidden>Cancel</button></div>
+    </form>
+    <ul id="slist"></ul>
+
+    <h3>Backups</h3>
+    <form class="stack" id="bform">
+      <label>Folder<input id="bpath"></label>
+      <div class="cols">
+        <label>Every (hours)<input id="bint" type="number" min="1" step="1"></label>
+        <label>Keep (backups)<input id="bmax" type="number" min="1" max="100" step="1"></label>
+      </div>
+      <div class="btns"><button class="btn">Save</button><button type="button" class="btn" id="bnow">Backup now</button><a class="btn" href="/api/backup/download" style="text-decoration:none">Download</a></div>
+    </form>
+    <p class="note err" id="berr" hidden></p>
+    <ul id="blist"></ul>
+    <p class="note" style="margin-top:14px">Restore from a file</p>
+    <input type="file" id="bfile" accept=".json,application/json">
+  </div>
+
+  <p class="note" id="who" hidden style="margin-top:26px"><a href="#" id="logout" style="color:var(--muted)">Log out</a></p>
+</aside>
+<div id="toast" role="status"></div>
+
+<script>
+"use strict";
+let S = __STATE__;
+const $ = id => document.getElementById(id);
+const h = (tag, attrs, ...kids) => {
+  const e = document.createElement(tag);
+  for (const k in attrs || {}) k === "text" ? e.textContent = attrs[k] : e.setAttribute(k, attrs[k]);
+  e.append(...kids);
+  return e;
+};
+let toastT;
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 2600);
+}
+async function api(method, url, body, raw) {
+  const r = await fetch(url, {method, headers: {"X-WC": "1", ...(body && !raw ? {"Content-Type": "application/json"} : {})},
+    body: raw ? body : body ? JSON.stringify(body) : undefined});
+  let d = null; try { d = await r.json(); } catch (e) {}
+  if (!r.ok) {
+    if (r.status === 401) { S.authed = false; applyAuth(); }
+    throw new Error((d && d.error) || r.statusText);
+  }
+  return d;
+}
+const act = fn => async (...a) => { try { await fn(...a); } catch (e) { toast(e.message); } };
+
+/* ---------- grid ---------- */
+const GAP = 14, PAD = 20, RATIO = 1.35, MAXW = 380, MINW = 150;
+function layout() {
+  const n = S.services.length; if (!n) return;
+  const W = innerWidth - PAD * 2, H = innerHeight - PAD * 2;
+  let best = null;
+  for (let cols = 1; cols <= n; cols++) {
+    const rows = Math.ceil(n / cols);
+    const cw = (W - GAP * (cols - 1)) / cols, ch = (H - GAP * (rows - 1)) / rows;
+    if (cw < 100 && cols > 1) break;
+    let w = Math.min(cw, ch * RATIO, MAXW);
+    w = Math.max(w, Math.min(cw, MINW));
+    if (!best || w > best.w + 1 || (Math.abs(w - best.w) <= 1 && rows < best.rows)) best = {cols, rows, w};
+  }
+  const g = $("grid");
+  g.style.gridTemplateColumns = `repeat(${best.cols},${Math.floor(best.w)}px)`;
+  g.style.gridAutoRows = `${Math.floor(best.w / RATIO)}px`;
+}
+const cls = s => s.up === true ? "up" : s.up === false ? "down" : "pend";
+const hostOf = u => { try { return new URL(u).host; } catch (e) { return u; } };
+let lastKey = "";
+const pillText = s => s.up === true ? s.ms + " ms" : s.up === false ? "down" : "…";
+function render() {
+  const key = JSON.stringify(S.services.map(s => [s.id, s.name, s.url, s.icon]));
+  const g = $("grid");
+  if (key !== lastKey) {
+    lastKey = key;
+    g.replaceChildren(...S.services.map(s => h("a", {class: "tile", href: s.url, target: "_blank", rel: "noopener noreferrer"},
+      h("div", {class: "top"},
+        h("div", {class: "ico", text: s.icon || [...s.name][0] || "?"}),
+        h("div", {class: "pill"}, h("span", {class: "dot"}), h("span"))),
+      h("div", {}, h("div", {class: "name", text: s.name}), h("div", {class: "host", text: hostOf(s.url)})))));
+  }
+  S.services.forEach((s, i) => {
+    const t = g.children[i];
+    t.className = "tile " + cls(s);
+    t.querySelector(".pill span:last-child").textContent = pillText(s);
+  });
+  const up = S.services.filter(s => s.up).length;
+  document.title = S.services.length ? `${up}/${S.services.length} up · watchcat` : "watchcat";
+  $("empty").hidden = S.services.length > 0;
+  layout();
+  if (panelOpen()) renderList();
+}
+async function poll() {
+  if (document.hidden) return;
+  try { const r = await fetch("/api/state"); if (r.ok) { S = await r.json(); render(); applyAuth(); } } catch (e) {}
+}
+addEventListener("resize", layout);
+document.addEventListener("visibilitychange", poll);
+setInterval(poll, 10000);
+
+/* ---------- panel ---------- */
+const panelOpen = () => document.body.classList.contains("open");
+function openPanel(v) {
+  document.body.classList.toggle("open", v);
+  $("panel").setAttribute("aria-hidden", !v);
+  if (v) { applyAuth(); if (S.authed || !S.auth_required) loadBackups(); }
+}
+function applyAuth() {
+  const can = !S.auth_required || S.authed;
+  $("login").hidden = can;
+  $("admin").hidden = !can;
+  $("who").hidden = !(S.auth_required && S.authed);
+  if (can && panelOpen()) renderList();
+}
+$("gear").onclick = () => openPanel(!panelOpen());
+$("close").onclick = $("scrim").onclick = () => openPanel(false);
+addEventListener("keydown", e => { if (e.key === "Escape") openPanel(false); });
+
+$("lform").onsubmit = act(async e => {
+  e.preventDefault();
+  await api("POST", "/api/login", {password: $("pw").value});
+  $("pw").value = ""; S.authed = true; applyAuth(); loadBackups();
+});
+$("logout").onclick = act(async e => { e.preventDefault(); await api("POST", "/api/logout"); S.authed = false; applyAuth(); });
+
+/* services */
+let editId = null;
+function resetForm() { editId = null; $("sform").reset(); $("ssave").textContent = "Add"; $("scancel").hidden = true; }
+$("scancel").onclick = resetForm;
+$("sform").onsubmit = act(async e => {
+  e.preventDefault();
+  const body = {name: $("sname").value, url: $("surl").value, icon: $("sicon").value};
+  S = editId ? await api("PUT", "/api/services/" + editId, body) : await api("POST", "/api/services", body);
+  resetForm(); render(); setTimeout(poll, 1500); setTimeout(poll, 5500);
+});
+const move = act(async (i, d) => {
+  const ids = S.services.map(s => s.id); const j = i + d;
+  if (j < 0 || j >= ids.length) return;
+  [ids[i], ids[j]] = [ids[j], ids[i]];
+  S = await api("POST", "/api/services/reorder", {ids}); render();
+});
+const del = act(async s => {
+  if (!confirm(`Remove "${s.name}"?`)) return;
+  S = await api("DELETE", "/api/services/" + s.id); if (editId === s.id) resetForm(); render();
+});
+function edit(s) {
+  editId = s.id; $("sname").value = s.name; $("surl").value = s.url; $("sicon").value = s.icon || "";
+  $("ssave").textContent = "Save"; $("scancel").hidden = false; $("sname").focus();
+}
+function renderList() {
+  $("slist").replaceChildren(...S.services.map((s, i) => {
+    const b = (t, title, fn, c) => { const x = h("button", {class: "btn sm " + (c || ""), title, text: t, type: "button"}); x.onclick = fn; return x; };
+    return h("li", {}, h("div", {class: "t"}, document.createTextNode(s.name), h("small", {text: hostOf(s.url)})),
+      b("↑", "Move up", () => move(i, -1)), b("↓", "Move down", () => move(i, 1)),
+      b("✎", "Edit", () => edit(s)), b("✕", "Remove", () => del(s), "danger"));
+  }));
+}
+
+/* backups */
+const fmt = t => new Date(t * 1000).toLocaleString([], {dateStyle: "medium", timeStyle: "short"});
+const kb = n => n < 1024 ? n + " B" : (n / 1024).toFixed(1) + " KB";
+const loadBackups = act(async () => {
+  const d = await api("GET", "/api/backup");
+  $("bpath").value = d.settings.path; $("bint").value = d.settings.interval_hours; $("bmax").value = d.settings.max_backups;
+  $("berr").hidden = !d.error; $("berr").textContent = d.error;
+  $("blist").replaceChildren(...d.backups.map(b => {
+    const r = h("button", {class: "btn sm", type: "button", text: "Restore"});
+    r.onclick = act(async () => {
+      if (!confirm(`Replace current services with backup from ${fmt(b.time)}?`)) return;
+      await api("POST", "/api/backup/restore/" + b.name); toast("Restored"); await poll(); setTimeout(poll, 3000);
+    });
+    return h("li", {}, h("div", {class: "t"}, document.createTextNode(fmt(b.time)), h("small", {text: b.name + " · " + kb(b.size)})), r);
+  }));
+  if (!d.backups.length) $("blist").replaceChildren(h("li", {}, h("div", {class: "t note", text: "No backups in this folder yet"})));
+});
+$("bform").onsubmit = act(async e => {
+  e.preventDefault();
+  await api("PUT", "/api/backup/settings", {path: $("bpath").value, interval_hours: $("bint").value, max_backups: $("bmax").value});
+  toast("Saved"); loadBackups();
+});
+$("bnow").onclick = act(async () => { await api("POST", "/api/backup/now"); toast("Backup created"); loadBackups(); });
+$("bfile").onchange = act(async e => {
+  const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  if (!confirm(`Replace current services with "${f.name}"?`)) return;
+  await api("POST", "/api/backup/upload", await f.text(), true);
+  toast("Restored"); await poll(); setTimeout(poll, 3000);
+});
+
+render(); applyAuth();
+</script>
+</body>
+</html>
