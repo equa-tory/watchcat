@@ -397,37 +397,69 @@ def _pool_map(fn, items, workers=6):
 
 # ---------- frp ----------
 
+FRP_OFF = "#watchcat-off# "   # prefix watchcat puts on every line of a proxy it has switched off (fully reversible)
+
+
+def frp_blocks(text):
+    """Locate every [[proxies]] block (enabled or switched off by watchcat): name, type, ports, line range."""
+    lines = text.split("\n")
+    un = lambda l: l[len(FRP_OFF):] if l.startswith(FRP_OFF) else l
+    blocks, cur = [], None
+    for i, raw in enumerate(lines):
+        l = un(raw)
+        if re.match(r"\s*\[\[\s*proxies\s*\]\]", l):
+            cur = {"start": i, "end": i + 1, "off": raw.startswith(FRP_OFF)}
+            blocks.append(cur)
+        elif re.match(r"\s*\[", l):
+            cur = None  # some other table ends the block
+        elif cur is not None and l.strip() and not l.lstrip().startswith("#"):
+            cur["end"] = i + 1   # block ends at its last real setting, not at trailing comments
+    for blk in blocks:
+        body = "\n".join(un(x) for x in lines[blk["start"]:blk["end"]])
+        g = lambda k: (re.search(r'^\s*%s\s*=\s*"?([^"\n#]+)"?' % k, body, re.M) or [None, None])[1]
+        num = lambda k: int(g(k)) if (g(k) or "").strip().isdigit() else None
+        blk.update(name=(g("name") or "").strip(), type=(g("type") or "tcp").strip(), local=num("localPort"), remote=num("remotePort"))
+    return blocks
+
+
 def _parse_frpc(path):
-    """serverAddr/serverPort/protocol + proxies (name, type, ports). Never reads tokens into the result."""
+    """serverAddr/serverPort/protocol/proxyURL + proxies (name, type, ports, enabled). Never reads tokens into the result."""
     with open(path, "rb") as f:
         txt = f.read().decode("utf-8", "replace")
+    pick = lambda blk, k: (re.search(r'^\s*%s\s*=\s*"?([^"\n#]+)"?' % re.escape(k), blk, re.M) or [None, None])[1]
+    head = re.split(r"^\s*\[\[proxies\]\]", txt, maxsplit=1, flags=re.M)[0]
+    server, port, proto, purl = None, 7000, "tcp", None
     try:
         import tomllib
         c = tomllib.loads(txt)
-        tr = c.get("transport") or {}
-        return {"server": c.get("serverAddr") or c.get("server_addr"),
-                "port": int(c.get("serverPort") or c.get("server_port") or 7000),
-                "proto": (tr.get("protocol") or "tcp") if isinstance(tr, dict) else "tcp",
-                "proxies": [{"name": p.get("name"), "type": p.get("type", "tcp"), "local": p.get("localPort"),
-                             "remote": p.get("remotePort"),
-                             "domains": p.get("customDomains") or ([p["subdomain"]] if p.get("subdomain") else [])}
-                            for p in c.get("proxies", []) if isinstance(p, dict)]}
-    except ImportError:  # Python < 3.11: tiny regex reader, good enough for the keys we need
-        pass
-    pick = lambda blk, k: (re.search(r'^\s*%s\s*=\s*"?([^"\n#]+)"?' % re.escape(k), blk, re.M) or [None, None])[1]
-    head, *blocks = re.split(r"^\s*\[\[proxies\]\]", txt, flags=re.M)
-    port = (pick(head, "serverPort") or "").strip()
-    px = []
-    for blk in blocks:
-        num = lambda k: int(pick(blk, k)) if (pick(blk, k) or "").strip().isdigit() else None
-        px.append({"name": (pick(blk, "name") or "").strip(), "type": (pick(blk, "type") or "tcp").strip(),
-                   "local": num("localPort"), "remote": num("remotePort"), "domains": []})
-    return {"server": (pick(head, "serverAddr") or "").strip() or None, "port": int(port) if port.isdigit() else 7000,
-            "proto": (pick(head, "transport.protocol") or "tcp").strip(), "proxies": px}
+        tr = c.get("transport") if isinstance(c.get("transport"), dict) else {}
+        server, port = c.get("serverAddr") or c.get("server_addr"), int(c.get("serverPort") or c.get("server_port") or 7000)
+        proto, purl = tr.get("protocol") or "tcp", tr.get("proxyURL")
+    except ImportError:  # Python < 3.11: regex reader is good enough for the keys we need
+        server = (pick(head, "serverAddr") or "").strip() or None
+        p = (pick(head, "serverPort") or "").strip()
+        port = int(p) if p.isdigit() else 7000
+        proto, purl = (pick(head, "transport.protocol") or "tcp").strip(), (pick(head, "transport.proxyURL") or "").strip() or None
+    proxies = [{"name": b["name"], "type": b["type"], "local": b["local"], "remote": b["remote"], "enabled": not b["off"], "domains": []}
+               for b in frp_blocks(txt)]
+    return {"server": server, "port": port, "proto": proto, "proxy_url": purl, "proxies": proxies}
+
+
+def frp_config_path():
+    return _get("FRP_CONFIG") or _proc_arg("frpc", ("-c", "--config")) or "/etc/frp/frpc.toml"
+
+
+def refresh(*keys):
+    """Make the next /api/sys recompute these sources (after a control action changed something)."""
+    for k in keys:
+        if k in _slots:
+            _slots[k].ts = -1e9
+        for mk in [m for m in _memo if m.startswith(k)]:
+            del _memo[mk]
 
 
 def frp():
-    path = _get("FRP_CONFIG") or _proc_arg("frpc", ("-c", "--config")) or "/etc/frp/frpc.toml"
+    path = frp_config_path()
     unit = _get("FRP_SERVICE", "frp")
     active = _systemctl_active(unit)
     running = active == "active" or _proc_arg("frpc", ("-c", "--config")) is not None
@@ -436,14 +468,17 @@ def frp():
     try:
         c = _parse_frpc(path)
     except Exception:
-        c = {"server": None, "port": None, "proto": None, "proxies": []}
+        c = {"server": None, "port": None, "proto": None, "proxy_url": None, "proxies": []}
     server, proxies = c["server"], c["proxies"]
     res = {"active": active or ("active" if running else "unknown"), "server": server, "port": c["port"],
-           "proto": c["proto"], "ping": None, "proxies": []}
+           "proto": c["proto"], "via_proxy": bool(c["proxy_url"]), "ping": None, "proxies": []}
+    live = [p for p in proxies if p["enabled"]]
     checked = memo("frp_proxies", 60, lambda: _pool_map(  # remote ports: once a minute so sshd etc. isn't hammered
-        lambda p: _tcp_ms(server, p["remote"]) if server and p.get("remote") else None, proxies)) or [None] * len(proxies)
-    for p, ms in zip(proxies, checked):
-        res["proxies"].append({**p, "up": ms is not None if p.get("remote") else None, "ms": ms})
+        lambda p: _tcp_ms(server, p["remote"]) if server and p.get("remote") else None, live)) or [None] * len(live)
+    ms_of = {id(p): ms for p, ms in zip(live, checked)}
+    for p in proxies:
+        ms = ms_of.get(id(p))
+        res["proxies"].append({**p, "up": (ms is not None if p.get("remote") else None) if p["enabled"] else None, "ms": ms})
     if server and c["proto"] in ("tcp", "websocket", "wss", None):
         res["ping"] = _tcp_ms(server, c["port"])  # control port is TCP: ping it directly
     else:  # quic/kcp run over UDP: use the round trip to the forwarded ports (it goes through the tunnel host)
@@ -820,7 +855,7 @@ def collect(full, peek=False):
         f = bg("frp", 10, frp)
         if f is not None and not full:
             f = {"active": f["active"], "ping": f["ping"], "redacted": True,
-                 "n": len(f["proxies"]), "up": sum(1 for p in f["proxies"] if p["up"])}
+                 "n": sum(1 for p in f["proxies"] if p["enabled"]), "up": sum(1 for p in f["proxies"] if p["up"])}
             locked.append("frp ports")
         put("frp", f)
     if "xray" not in hidden:

@@ -125,6 +125,16 @@ a.tile:hover,.tile[role=button]:hover,a.tile:focus-visible,.tile[role=button]:fo
 .stile[data-s=pend]{--c:var(--pend)}
 .sh{display:flex;justify-content:space-between;align-items:baseline;gap:.6em;color:var(--muted);flex:none;min-width:0}
 .sh b{color:var(--text);font-weight:650;letter-spacing:-.01em;font-size:1.12em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto;max-width:75%}
+.acts{display:flex;gap:6px;flex:none;align-items:center}
+.tb{padding:2px 9px;border-radius:8px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:.95em;cursor:pointer;white-space:nowrap;line-height:1.5}
+.tb:hover{border-color:var(--accent)}
+.tb.danger:hover{border-color:var(--down);color:var(--down)}
+.tb.go{background:var(--accent);border-color:var(--accent);color:#fff}
+.btnrow{display:flex;gap:6px;flex-wrap:wrap;flex:none}
+.rows .fl{display:flex;align-items:center;gap:.5em;min-width:0}
+.rows .fl input{width:auto;margin:0;padding:0;border:0;background:none;accent-color:var(--accent);flex:none}
+.rows .offrow>span{color:var(--muted);text-decoration:line-through}
+.rows .offrow>span:last-child{text-decoration:none}
 .sh span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1 1 0;text-align:right}
 .sbody{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:space-between;gap:.45em;overflow:hidden}
 .big{font-size:var(--bs,28px);font-weight:700;letter-spacing:-.03em;line-height:1;color:var(--c);font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -282,6 +292,8 @@ li.grp{padding:6px 8px}
     <div class="chk" id="stog"></div>
     <p class="note" style="margin:12px 0 6px" id="mnote">Drives to show</p>
     <div class="chk" id="mtog"></div>
+    <p class="note" style="margin:14px 0 6px">Controls on the tiles</p>
+    <div class="warnbox" id="ctlnote">…</div>
     <p class="note" style="margin:14px 0 6px">Command tiles <span style="opacity:.8">(like <code>watch -n 1</code>)</span></p>
     <div class="warnbox" id="cwarn"></div>
     <div class="stack" id="clist" style="margin-top:8px"></div>
@@ -735,7 +747,16 @@ const srv = {on: false, d: null, timer: 0, key: "", cfg: null};
 const fmtB = b => b >= 2 ** 40 ? (b / 2 ** 40).toFixed(1) + " TB" : b >= 2 ** 30 ? (b / 2 ** 30).toFixed(b < 10 * 2 ** 30 ? 1 : 0) + " GB" : Math.round(b / 2 ** 20) + " MB";
 const fmtG = b => b >= 2 ** 40 ? (b / 2 ** 40).toFixed(1) + "T" : b >= 2 ** 30 ? Math.round(b / 2 ** 30) + "G" : Math.round(b / 2 ** 20) + "M";
 const tone = (v, w, bd) => v == null ? "pend" : v >= bd ? "down" : v >= w ? "warn" : "up";
-const head = (a, b) => h("div", {class: "sh"}, h("b", {text: a}), h("span", {text: b || ""}));
+const head = (a, b, ...btns) => h("div", {class: "sh"}, h("b", {text: a}), h("span", {text: b || ""}), btns.length ? h("div", {class: "acts"}, ...btns) : null);
+const tbtn = (text, fn, cls, title) => { const b = h("button", {type: "button", class: "tb " + (cls || ""), text, title: title || ""}); b.onclick = e => { e.stopPropagation(); fn(); }; return b; };
+// server-page buttons: fixed whitelist on the server, only offered to logged-in users when a PASSWORD is set
+const ctlCall = act(async (path, body, ask) => {
+  if (ask && !confirm(ask)) return;
+  const r = await api("POST", "/api/ctl/" + path, body || {});
+  toast(r.msg || "Done");
+  srv.frpEdit = {}; srv.editV = (srv.editV || 0) + 1;
+  clearTimeout(srv.timer); setTimeout(srvPoll, 800); setTimeout(srvPoll, 4000);
+});
 const big = (v, unit) => h("div", {class: "big"}, document.createTextNode(v), h("small", {text: unit || ""}));
 const bar = pct => { const i = h("i"); i.style.width = clamp(0, pct || 0, 100) + "%"; return h("div", {class: "bar"}, i); };
 const sub = t => h("div", {class: "sub2", text: t});
@@ -812,13 +833,16 @@ const DRAW = {
     t.dataset.s = d.loaded.length ? "up" : "pend";
     const names = new Set(d.loaded.map(m => m.name)), others = d.available.filter(m => !names.has(m.name));
     const total = d.available.reduce((a, m) => a + (m.size || 0), 0);
+    const can = c.ctl && c.ctl.ollama;
     const loaded = d.loaded.map(m => Object.assign([m.name, fmtB(m.vram || m.size) + " VRAM"], {cls: "act", title: m.expires ? "unloads " + new Date(m.expires).toLocaleTimeString() : ""}));
     const list = h("div", {class: "mlist"}, ...others.map(m => h("div", {}, h("span", {text: m.name, title: m.name}), h("span", {text: m.size ? fmtB(m.size) : ""}))));
     list.style.setProperty("--mc", c.tw >= 440 ? 2 : 1);
     const body = h("div", {class: "scroll", style: "flex:1 1 0"},
-      loaded.length ? rowsOf(loaded) : sub("nothing loaded"),
+      loaded.length ? (can ? h("div", {class: "rows"}, ...d.loaded.map((m, i) => h("div", {class: "act"}, h("span", {text: m.name, title: loaded[i].title}),
+        h("span", {style: "display:flex;gap:8px;align-items:center"}, document.createTextNode(fmtB(m.vram || m.size) + " VRAM"), tbtn("Unload", () => ctlCall("ollama/unload", {model: m.name}), "", "Unload from VRAM"))))) : rowsOf(loaded)) : sub("nothing loaded"),
       others.length ? h("div", {class: "lab", text: loaded.length ? "Also available" : "Available"}) : null, others.length ? list : null);
-    t.replaceChildren(head("Ollama", `${d.loaded.length} loaded · ${d.available.length} models · ${fmtB(total)}`), h("div", {class: "sbody"}, body));
+    t.replaceChildren(head("Ollama", `${d.loaded.length} loaded · ${d.available.length} models · ${fmtB(total)}`,
+      can && d.loaded.length ? tbtn("Free VRAM", () => ctlCall("ollama/unload-all", {}), "", "Unload every loaded model") : null), h("div", {class: "sbody"}, body));
   },
   docker(t, d) {
     if (d.redacted) { t.dataset.s = "up"; t.replaceChildren(head("Docker", ""), h("div", {class: "sbody"}, big(d.count, "running"), sub("log in for the list"))); return; }
@@ -831,21 +855,42 @@ const DRAW = {
     t.replaceChildren(head(title, ""), h("div", {class: "sbody"}, rowsOf(rows.map(p =>
       Object.assign([p.name, by === "cpu" ? p.cpu.toFixed(1) + "%" : fmtB(p.rss)], {title: `${p.name} · pid ${p.pid} · ${p.user}`})))));
   },
-  frp(t, d) {
+  frp(t, d, c) {
     t.dataset.s = d.active !== "active" ? "down" : d.ping == null ? "warn" : "up";
     if (d.redacted) {
       t.replaceChildren(head("frp", ""), h("div", {class: "sbody"}, big(d.ping != null ? d.ping : "–", "ms"), sub(`${d.active} · ${d.up}/${d.n} ports up`)));
       return;
     }
+    const can = c.ctl && c.ctl.frp, edit = srv.frpEdit || (srv.frpEdit = {});
     const label = p => `${p.name} ${p.local ?? ""}${p.remote != null ? " → " + p.remote : ""}`;
+    const row = p => {
+      const on = p.name in edit ? edit[p.name] : p.enabled;
+      const state = !p.enabled ? "off" : p.up === false ? "down" : p.ms != null ? p.ms + " ms" : p.type;
+      let first = h("span", {text: label(p)});
+      if (can) {
+        const cb = h("input", {type: "checkbox", title: "Tick = forwarded. Untick, then Apply to switch this port off."});
+        cb.checked = on;
+        cb.onchange = () => { if (cb.checked === p.enabled) delete edit[p.name]; else edit[p.name] = cb.checked; srv.editV = (srv.editV || 0) + 1; drawSrv(t); };
+        first = h("label", {class: "fl"}, cb, first);
+      }
+      return h("div", {class: !p.enabled ? "offrow" : p.up === false ? "bad" : p.up ? "ok" : ""}, first, h("span", {text: state}));
+    };
+    const pending = Object.keys(edit);
     t.replaceChildren(head("frp", `${d.proto || ""} · ${d.server || ""}`), h("div", {class: "sbody"},
       sub(`${d.active} · tunnel ${d.ping != null ? d.ping + " ms" : "no reply"}`),
-      rowsOf(d.proxies.map(p => Object.assign([label(p), p.up === false ? "down" : p.ms != null ? p.ms + " ms" : p.type], {cls: p.up === false ? "bad" : p.up ? "ok" : ""})))));
+      h("div", {class: "rows scroll"}, ...d.proxies.map(row)),
+      can ? h("div", {class: "btnrow"},
+        pending.length ? tbtn(`Apply ${pending.length} change${pending.length > 1 ? "s" : ""} & restart`, () => ctlCall("frp/proxies", {enabled: {...edit}}, "Restart frp now? Tunnels drop for a few seconds."), "go") : null,
+        tbtn("Restart frp", () => ctlCall("frp/restart", {}, "Restart frp? Tunnels drop for a few seconds."), "", "Restart the frp client")) : null));
   },
-  xray(t, d) {
+  xray(t, d, c) {
     t.dataset.s = d.active !== "active" ? "down" : d.ok ? "up" : "warn";
+    const can = !d.redacted && c.ctl && c.ctl.xray, viaFrp = srv.d.tiles.frp && srv.d.tiles.frp.via_proxy;
+    const btns = can ? [tbtn("Restart", () => ctlCall("xray/restart", {}, null), "", "Restart xray"),
+      d.active === "active" ? tbtn("Stop", () => ctlCall("xray/stop", {}, "Stop xray? All traffic through the proxy stops." + (viaFrp ? "\n\nfrp tunnels via this proxy too, so they will drop as well." : "")), "danger")
+        : tbtn("Start", () => ctlCall("xray/start", {}), "go")] : [];
     if (d.redacted) { t.replaceChildren(head("xray", ""), h("div", {class: "sbody"}, big(d.ping != null ? d.ping : "–", "ms"), sub(d.active + (d.ok === false ? " · proxy not answering" : "")))); return; }
-    t.replaceChildren(head("xray", d.name ? `${d.name}${d.name_kind === "fastest" ? " (fastest)" : ""}` : ""), h("div", {class: "sbody"},
+    t.replaceChildren(head("xray", d.name ? `${d.name}${d.name_kind === "fastest" ? " (fastest)" : ""}` : "", ...btns), h("div", {class: "sbody"},
       h("div", {}, big(d.ping != null ? d.ping : "–", "ms"), sub(`${d.active}${d.exit_ip ? " · exit " + d.exit_ip : ""}`)),
       d.outbounds.length ? rowsOf(d.outbounds.map(o => Object.assign([o.tag, o.ms != null ? o.ms + " ms" : "down"], {cls: o.ms == null ? "bad" : o.active ? "act" : "", title: `${o.address}:${o.port}`}))) : null));
   },
@@ -899,8 +944,8 @@ function srvApply(d) {
   if (key !== srv.laid) { srv.laid = key; srvLayout(); }
 }
 function drawSrv(t) {
-  const ctx = {rows: t._rows || 4, tw: t._tw || 200, th: t._th || 150, tp: t._tp || 10, hs: t._hs || 12};
-  const sig = JSON.stringify(t._data) + "|" + Object.values(ctx).join(",") + "|" + mode + "|" + (srv.histV || 0);
+  const ctx = {rows: t._rows || 4, tw: t._tw || 200, th: t._th || 150, tp: t._tp || 10, hs: t._hs || 12, ctl: srv.d && srv.d.ctl};
+  const sig = JSON.stringify(t._data) + "|" + Object.values({...ctx, ctl: JSON.stringify(ctx.ctl || 0)}).join(",") + "|" + mode + "|" + (srv.histV || 0) + "|" + (srv.editV || 0);
   if (sig === t._sig) return;
   t._sig = sig;
   try { DRAW[t._kind](t, t._data, ctx); } catch (e) { t.textContent = String(e); }
@@ -1133,10 +1178,21 @@ function renderSrvCfg() {
   if (ok) cfg.cmds.forEach(c => { const r = cmdRow(c); sdraft.cmds.push(r); $("clist").append(r.el); });
   $("cadd").hidden = !ok; $("clist").hidden = !ok;
 }
+async function renderCtlNote() {
+  const el = $("ctlnote");
+  if (!srv.cfg || !srv.cfg.cmds_allowed) { el.textContent = "Disabled: buttons that act on the server (unload models, xray on/off, frp ports) only work when a PASSWORD is set in .env."; return; }
+  let c; try { c = await api("GET", "/api/ctl/caps"); } catch (e) { el.textContent = e.message; return; }
+  const ok = v => v ? "✓" : "✗";
+  el.replaceChildren(document.createTextNode(`Ollama unload ${ok(c.ollama)} · xray on/off ${ok(c.xray)} · frp restart/ports ${ok(c.frp)}. `));
+  if (!c.xray || !c.frp) {
+    el.append(document.createTextNode("xray and frp need a one-time sudo rule that allows only those units (no password, nothing else). Run this on the server, then reload: "),
+      h("code", {text: c.install, style: "user-select:all;display:block;margin-top:6px;word-break:break-all"}));
+  }
+}
 const loadSrvCfg = act(async () => {
   srv.cfg = await api("GET", "/api/server-tiles");
   if (!srv.d) { try { srv.d = await (await fetch("/api/sys")).json(); } catch (e) {} }
-  renderSrvCfg();
+  renderSrvCfg(); renderCtlNote();
 });
 $("cadd").onclick = () => { if (sdraft.cmds.length >= 12) return toast("At most 12 command tiles"); const r = cmdRow({interval: 5}); sdraft.cmds.push(r); $("clist").append(r.el); };
 $("ssave2").onclick = act(async () => {

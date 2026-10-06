@@ -22,6 +22,7 @@ from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urljoin, urlparse
 
+import ctl
 import sysinfo
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -770,7 +771,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.json({"supported": False})
             full = self.authed()  # no PASSWORD set -> everyone counts as logged in
             peek = "peek=1" in (urlparse(self.path).query or "")
-            return self.json({**sysinfo.collect(full, peek), "redacted": not full, "auth_required": bool(PASSWORD)})
+            out = {**sysinfo.collect(full, peek), "redacted": not full, "auth_required": bool(PASSWORD)}
+            if full and PASSWORD:  # which buttons work (only shown to logged-in users, only when a password protects them)
+                out["ctl"] = sysinfo.bg("ctl_caps", 60, ctl.caps, wait=False)
+            return self.json(out)
         if m == "GET" and p == ["sys-hist"]:
             return self.json(sysinfo.history() if sysinfo.SUPPORTED else {"t": [], "s": {}, "now": time.time(), "step": 15})
         if m == "GET" and p == ["history"]:
@@ -807,6 +811,8 @@ class Handler(BaseHTTPRequestHandler):
                 groups.update(new)
                 save_settings()
             return self.json(state(True))
+        if p[:1] == ["ctl"]:
+            return self.ctl(m, p[1:], raw)
         if p == ["server-tiles"]:
             if m == "GET":
                 return self.json({**server_tiles, "builtin": sysinfo.BUILTIN, "cmds_allowed": bool(PASSWORD),
@@ -821,6 +827,40 @@ class Handler(BaseHTTPRequestHandler):
                                   "user": getpass.getuser()})
         if p[:1] == ["backup"]:
             return self.backup(m, p[1:], raw)
+        raise Err(404, "Not found")
+
+    def ctl(self, m, p, raw):
+        """Server-page buttons. Fixed whitelist; only with a PASSWORD set (these act on the host)."""
+        if not PASSWORD:
+            raise Err(403, "Set PASSWORD in .env to enable controls")
+        if m == "GET" and p == ["caps"]:
+            return self.json({**(sysinfo.bg("ctl_caps", 60, ctl.caps) or {}), "user": getpass.getuser(),
+                              "install": f"sudo bash {os.path.join(ROOT, 'tools', 'install-sudoers.sh')}"})
+        if m != "POST":
+            raise Err(405, "POST only")
+        try:
+            if p == ["ollama", "unload"]:
+                model = self.body(raw).get("model")
+                if not isinstance(model, str) or not model:
+                    raise Err(400, "Model name required")
+                return self.json({"ok": True, "msg": f"Unloaded {model}", "n": ctl.ollama_unload(model)})
+            if p == ["ollama", "unload-all"]:
+                n = ctl.ollama_unload(None)
+                return self.json({"ok": True, "msg": f"Unloaded {n} model(s), VRAM freed" if n else "Nothing was loaded", "n": n})
+            if len(p) == 2 and p[0] == "xray" and p[1] in ("start", "stop", "restart"):
+                ctl.xray_action(p[1])
+                return self.json({"ok": True, "msg": f"xray {p[1]} requested"})
+            if p == ["frp", "restart"]:
+                ctl.frp_restart()
+                return self.json({"ok": True, "msg": "frp restarting"})
+            if p == ["frp", "proxies"]:
+                en = self.body(raw).get("enabled")
+                if not isinstance(en, dict) or not all(isinstance(k, str) and isinstance(v, bool) for k, v in en.items()):
+                    raise Err(400, "enabled must map proxy names to true/false")
+                changed = ctl.frp_set_proxies(en)
+                return self.json({"ok": True, "msg": ("frp restarted with: " + ", ".join(f"{n} {'on' if en[n] else 'off'}" for n in changed)) if changed else "Nothing to change"})
+        except ctl.CtlError as e:
+            raise Err(e.code, e.msg)
         raise Err(404, "Not found")
 
     def services(self, m, p, raw):
