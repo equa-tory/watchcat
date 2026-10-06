@@ -881,6 +881,12 @@ class Handler(BaseHTTPRequestHandler):
             if len(p) == 2 and p[0] == "xray" and p[1] in ("start", "stop", "restart"):
                 ctl.xray_action(p[1])
                 return self.json({"ok": True, "msg": f"xray {p[1]} requested"})
+            if len(p) == 2 and p[0] == "alloc" and p[1] in ("check", "grow"):
+                mount = self.body(raw).get("mount")
+                if not isinstance(mount, str) or not mount:
+                    raise Err(400, "Mount point required")
+                free, msg = (ctl.alloc_check if p[1] == "check" else ctl.alloc_grow)(mount)
+                return self.json({"ok": True, "msg": msg, "free": free})
             if p == ["frp", "restart"]:
                 ctl.frp_restart()
                 return self.json({"ok": True, "msg": "frp restarting"})

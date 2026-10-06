@@ -4,6 +4,7 @@ from a request:
   * Ollama: unload one model / all models (Ollama's own API, no root needed)
   * xray:   start / stop / restart its systemd unit
   * frp:    restart its unit, and switch individual [[proxies]] on/off in frpc.toml (then restart)
+  * drives: re-read a disk's size and grow a filesystem into unallocated space (alloc.py decides the commands)
 
 systemd actions go through `sudo -n /usr/bin/systemctl <verb> <unit>`; they only work for the exact
 command lines allowed by /etc/sudoers.d/watchcat (see tools/install-sudoers.sh). Standard library only.
@@ -18,6 +19,7 @@ import threading
 import time
 import urllib.request
 
+import alloc
 import sysinfo
 
 SUDO, SYSTEMCTL = "/usr/bin/sudo", "/usr/bin/systemctl"
@@ -102,10 +104,10 @@ def _nopasswd_commands(listing):
 
 def caps():
     """Which buttons can work: Ollama via its API, systemd actions only if sudo allows that exact command."""
-    out = {"ollama": True, "xray": False, "frp": False}
+    out = {"ollama": True, "xray": False, "frp": False, "alloc": False}
     u = units()
     if _dry():
-        return {"ollama": True, "xray": True, "frp": True}
+        return {"ollama": True, "xray": True, "frp": True, "alloc": True}
     try:
         r = subprocess.run([SUDO, "-n", "-l"], capture_output=True, text=True, timeout=5)
     except (OSError, subprocess.TimeoutExpired):
@@ -116,6 +118,9 @@ def caps():
     can = lambda verb, name: all_ok or f"{SYSTEMCTL} {verb} {name}" in allowed
     out["xray"] = all(can(v, u["xray"]) for v in ("start", "stop", "restart"))
     out["frp"] = can("restart", u["frp"])
+    unesc = lambda c: re.sub(r"\\(.)", r"\1", c)
+    have = {unesc(c) for c in allowed}
+    out["alloc"] = all_ok or all(unesc(c) in have for c in alloc.sudoers_commands())   # nothing growable -> trivially true
     return out
 
 
@@ -212,3 +217,74 @@ def xray_action(verb):
     systemctl(verb, units()["xray"])
     time.sleep(0.5)
     sysinfo.refresh("xray", "frp")
+
+
+# ---------- drives: unallocated space ----------
+
+def _sudo(argv, stdin=None, timeout=600):
+    log("sudo " + " ".join(argv))
+    if _dry():
+        return 0, "(dry run)"
+    try:
+        r = subprocess.run([SUDO, "-n"] + argv, input=stdin, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise CtlError(f"Could not run {os.path.basename(argv[0])}: {e}")
+    out = ((r.stdout or "") + (r.stderr or "")).strip()
+    if r.returncode and ("password is required" in out or "not allowed" in out or "may not run" in out):
+        raise CtlError("Not allowed to run " + os.path.basename(argv[0]) + ": re-run tools/install-sudoers.sh once "
+                       "(it adds the disk commands for the current drives).", 403)
+    return r.returncode, out
+
+
+def _layout(mount):
+    for lay in alloc.layouts():       # only mounts we found ourselves: a request can't name its own device
+        if lay.mount == mount:
+            return lay
+    raise CtlError("That drive can't be resized from here", 404)
+
+
+def alloc_check(mount):
+    """Ask the kernel to re-read the disk size (a VM disk enlarged in the hypervisor isn't seen until then), then
+    report how much room the filesystem could gain."""
+    lay = _layout(mount)
+    note = ""
+    with _lock:
+        for disk in lay.disks():
+            p = alloc.rescan_path(disk)
+            if not p:
+                continue
+            try:
+                rc, out = _sudo([alloc.exe("tee"), p], stdin="1\n", timeout=15)
+                if rc:
+                    note = " (disk rescan failed)"
+            except CtlError as e:
+                note = " (disk not rescanned: sudo rule missing)" if e.code == 403 else " (disk rescan failed)"
+        time.sleep(0.4)
+    sysinfo.refresh("drives")
+    lay = _layout(mount)
+    free = lay.free()
+    if free < alloc.min_bytes():
+        return 0, f"{mount}: nothing unallocated{note}"
+    return free, f"{mount}: {sysinfo.fmt_bytes(free)} unallocated{note}"
+
+
+def alloc_grow(mount):
+    """Use ALL the unallocated space: growpart -> pvresize -> lvextend/resize2fs, each step an exact whitelisted
+    command. Every step only ever grows something; re-running after a failure simply continues."""
+    with _lock:
+        lay = _layout(mount)
+        free = lay.free()
+        if free < alloc.min_bytes():
+            raise CtlError(f"{mount}: nothing unallocated", 409)
+        steps = lay.steps()
+        done = []
+        for argv in steps:
+            name = os.path.basename(argv[0])
+            rc, out = _sudo(argv)
+            if rc and name == "growpart" and "NOCHANGE" in out:
+                rc = 0
+            if rc:
+                raise CtlError(f"{name} failed" + (f" after {', '.join(done)}" if done else "") + ": " + out[-240:])
+            done.append(name)
+    sysinfo.refresh("drives")
+    return free, f"{mount}: grown by {sysinfo.fmt_bytes(free)} ({' → '.join(done)})"

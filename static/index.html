@@ -139,6 +139,9 @@ a.tile:hover,.tile[role=button]:hover,a.tile:focus-visible,.tile[role=button]:fo
 .sbody{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:space-between;gap:.45em;overflow:hidden}
 .big{font-size:var(--bs,28px);font-weight:700;letter-spacing:-.03em;line-height:1;color:var(--c);font-variant-numeric:tabular-nums;white-space:nowrap}
 .big small{font-size:.42em;font-weight:600;color:var(--muted);margin-left:.2em;letter-spacing:0}
+.unr{display:flex;align-items:center;gap:6px;color:var(--warn);margin-bottom:.25em;min-width:0}
+.unr .tb{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.unr span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
 .sub2{color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bar{height:var(--bh,6px);border-radius:3px;background:color-mix(in srgb,var(--text) 10%,transparent);overflow:hidden;flex:none}
 .bar i{display:block;height:100%;background:var(--c);border-radius:3px;transition:width .6s}
@@ -827,9 +830,15 @@ const DRAW = {
     const items = d.dirs && d.dirs.items && d.dirs.items.length && c.th >= 135 ? d.dirs.items : null;
     const dirs = items ? Object.assign(rowsOf(items.map(x => Object.assign([x.name + (x.dir ? "/" : ""), fmtG(x.size)], {title: x.name + " · " + fmtB(x.size)}))),
       {title: "biggest folders, scanned " + ago(srv.d.t - d.dirs.ts)}) : null;
-    t.replaceChildren(head(d.mount, d.fstype), h("div", {class: "sbody"},
+    // unallocated disk space (empty disk after the partition / free LVM extents): shown to everyone, buttons to admins
+    const a = d.alloc, adm = a && c.ctl;
+    const can = adm && c.ctl.alloc;
+    const un = a && a.free ? (can ? h("div", {class: "unr"}, tbtn("Allocate +" + fmtB(a.free), () => ctlCall("alloc/grow", {mount: d.mount},
+        `Grow ${d.mount} by ${fmtB(a.free)}, using ALL the unallocated space?\n\nIt only ever enlarges the filesystem (growpart, pvresize, lvextend / resize2fs) and runs while the drive stays mounted.`), "go", "Use all the unallocated space on this disk"))
+      : h("div", {class: "unr"}, h("span", {text: "+" + fmtB(a.free) + " unallocated", title: "Room on the disk that this filesystem doesn't use yet"}))) : null;
+    t.replaceChildren(head(d.mount, d.fstype, adm ? tbtn(c.tw >= 215 ? "Check" : "↻", () => ctlCall("alloc/check", {mount: d.mount}), "", "Check for unallocated space (re-reads the disk size)") : null), h("div", {class: "sbody"},
       big(num(d.pct), "%"), dirs,
-      h("div", {}, sub(c.tw >= 215 ? `${fmtB(d.avail)} left · ${fmtB(d.used)} used` : `${fmtG(d.avail)} left · ${fmtG(d.used)} used`), bar(d.pct))));
+      h("div", {}, un, un && c.th < 150 ? null : sub(c.tw >= 215 ? `${fmtB(d.avail)} left · ${fmtB(d.used)} used` : `${fmtG(d.avail)} left · ${fmtG(d.used)} used`), bar(d.pct))));
   },
   ollama(t, d, c) {
     t.dataset.s = d.loaded.length ? "up" : "pend";
@@ -1185,9 +1194,9 @@ async function renderCtlNote() {
   if (!srv.cfg || !srv.cfg.cmds_allowed) { el.textContent = "Disabled: buttons that act on the server (unload models, xray on/off, frp ports) only work when a PASSWORD is set in .env."; return; }
   let c; try { c = await api("GET", "/api/ctl/caps"); } catch (e) { el.textContent = e.message; return; }
   const ok = v => v ? "✓" : "✗";
-  el.replaceChildren(document.createTextNode(`Ollama unload ${ok(c.ollama)} · xray on/off ${ok(c.xray)} · frp restart/ports ${ok(c.frp)}. `));
-  if (!c.xray || !c.frp) {
-    el.append(document.createTextNode("xray and frp need a one-time sudo rule that allows only those units (no password, nothing else). Run this on the server, then reload: "),
+  el.replaceChildren(document.createTextNode(`Ollama unload ${ok(c.ollama)} · xray on/off ${ok(c.xray)} · frp restart/ports ${ok(c.frp)} · grow drives ${ok(c.alloc)}. `));
+  if (!c.xray || !c.frp || !c.alloc) {
+    el.append(document.createTextNode("xray, frp and growing drives need a one-time sudo rule that allows only those exact commands (no password, nothing else). Run this on the server, then reload: "),
       h("code", {text: c.install, style: "user-select:all;display:block;margin-top:6px;word-break:break-all"}));
   }
 }

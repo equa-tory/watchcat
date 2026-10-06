@@ -21,6 +21,8 @@ import time
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutTimeout
 
+import alloc
+
 SUPPORTED = sys.platform.startswith("linux")
 _get = lambda key, default="": os.environ.get(key, default)  # replaced by init() with server.cfg
 _lock = threading.Lock()
@@ -37,6 +39,7 @@ _data_dir = None
 def init(getter, data_dir=None):
     global _get, _data_dir
     _get = getter
+    alloc.GET = getter
     _data_dir = data_dir
     if SUPPORTED:
         _load_state()
@@ -218,6 +221,10 @@ def _statvfs(mp):
         raise
 
 
+def fmt_bytes(b):
+    return f"{b / 2**40:.1f} TB" if b >= 2**40 else f"{b / 2**30:.1f} GB" if b >= 2**30 else f"{b / 2**20:.0f} MB"
+
+
 def drives():
     seen, out = set(), []
     with open("/proc/self/mounts") as f:
@@ -239,8 +246,15 @@ def drives():
             continue
         free = st.f_bavail * st.f_frsize
         used = (st.f_blocks - st.f_bfree) * st.f_frsize
-        out.append({"mount": mp, "fstype": fs, "size": size, "used": used, "avail": free,
-                    "pct": round(100 * used / max(1, used + free), 1)})
+        d = {"mount": mp, "fstype": fs, "size": size, "used": used, "avail": free,
+             "pct": round(100 * used / max(1, used + free), 1)}
+        try:
+            a = alloc.inspect(dev, mp, fs) if dev.startswith("/dev/") else None   # None: can't be grown from here
+        except Exception:
+            a = None
+        if a is not None:
+            d["alloc"] = a
+        out.append(d)
     return sorted(out, key=lambda d: d["mount"])
 
 
