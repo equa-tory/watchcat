@@ -23,10 +23,10 @@ button,input{font:inherit;color:inherit}
 
 /* grid: columns/rows/spans are computed in layout() so tiles always fill the whole width */
 #grid,#sgrid{display:grid;width:100%}
-/* two pages side by side; --x is driven by the finger (see pager code), the server page is on the left */
+/* two pages side by side; --x is driven by the finger (see pager code), the server page is on the right */
 :root{--pw:100vw}
 #vp{width:var(--pw);overflow-x:hidden;overflow-y:visible}   /* clips the 2-page strip so it can never widen the mobile layout viewport */
-#pager{display:flex;width:calc(var(--pw)*2);min-height:100dvh;transform:translate3d(var(--x,calc(var(--pw)*-1)),0,0);
+#pager{display:flex;width:calc(var(--pw)*2);min-height:100dvh;transform:translate3d(var(--x,0px),0,0);
   transition:transform 0ms cubic-bezier(.22,.9,.3,1);touch-action:pan-y pinch-zoom;will-change:transform}
 .page{position:relative;width:var(--pw);flex:none;min-height:100dvh}
 [data-s=up]{--c:var(--up)}[data-s=down]{--c:var(--down)}[data-s=warn]{--c:var(--warn)}[data-s=pend]{--c:var(--pend)}
@@ -37,13 +37,13 @@ button,input{font:inherit;color:inherit}
 .tile{position:relative;display:flex;flex-direction:column;justify-content:space-between;min-width:0;min-height:0;overflow:hidden;
   padding:var(--tp,12px);border-radius:var(--r,18px);background:var(--surface);border:1px solid var(--border);
   color:inherit;text-decoration:none;text-align:left;transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease,opacity .2s}
-button.tile,button.sub{font:inherit;cursor:copy}
+button.sub,.tile[role=button]{font:inherit;cursor:copy}   /* port-only tile is a div, not a button: buttons shrink-wrap their content */
 .tile.g{background:color-mix(in srgb,var(--gc) 13%,var(--surface));border-color:color-mix(in srgb,var(--gc) 42%,var(--border))}
 .tile.g::after{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:var(--gc);opacity:.9}
 .tile[data-s=down]{border-color:color-mix(in srgb,var(--down) 55%,var(--border));opacity:.82}
 .tile[data-s=down]::before{content:"";position:absolute;inset:0;background:linear-gradient(160deg,color-mix(in srgb,var(--down) 14%,transparent),transparent 60%);pointer-events:none}
 .tile[data-s=warn]{border-color:color-mix(in srgb,var(--warn) 50%,var(--border))}
-a.tile:hover,button.tile:hover,a.tile:focus-visible,button.tile:focus-visible{transform:translateY(-2px);box-shadow:var(--shadow);border-color:var(--accent);outline:none}
+a.tile:hover,.tile[role=button]:hover,a.tile:focus-visible,.tile[role=button]:focus-visible{transform:translateY(-2px);box-shadow:var(--shadow);border-color:var(--accent);outline:none}
 
 .top{display:flex;justify-content:space-between;align-items:flex-start;gap:.5em}
 .ico{flex:none;width:var(--is,40px);height:var(--is,40px);border-radius:26%;display:grid;place-items:center;overflow:hidden;
@@ -88,15 +88,26 @@ a.tile:hover,button.tile:hover,a.tile:focus-visible,button.tile:focus-visible{tr
 #empty b,#sempty b{display:block;color:var(--text);font-size:22px;margin-bottom:6px}
 [hidden]{display:none!important}
 
-.edge{position:fixed;top:50%;z-index:4;width:18px;height:64px;margin-top:-32px;border:1px solid var(--border);background:var(--surface);
-  color:var(--muted);cursor:pointer;opacity:.12;transition:opacity .2s,width .2s;display:grid;place-items:center;padding:0;font-size:16px;line-height:1}
-.edge:hover,.edge:focus-visible{opacity:1;width:26px}
-#edgeL{left:0;border-left:0;border-radius:0 12px 12px 0}
-#edgeR{right:0;border-right:0;border-radius:12px 0 0 12px}
-@media (hover:none){.edge{display:none}}
-#dots{position:fixed;left:50%;bottom:3px;transform:translateX(-50%);z-index:4;display:flex;gap:7px;padding:3px 6px;opacity:.5}
-#dots button{width:6px;height:6px;padding:0;border:0;border-radius:50%;background:var(--muted);opacity:.45;cursor:pointer}
-#dots button.on{opacity:1;background:var(--accent)}
+.edge{position:fixed;top:50%;z-index:4;width:30px;height:110px;margin-top:-55px;border:1px solid var(--border);background:var(--surface);
+  color:var(--muted);cursor:pointer;opacity:.22;transition:opacity .2s,width .2s,color .2s;display:grid;place-items:center;padding:0;font-size:24px;line-height:1}
+.edge:hover,.edge:focus-visible{opacity:1;width:42px;color:var(--text)}
+#edgeL{left:0;border-left:0;border-radius:0 14px 14px 0}
+#edgeR{right:0;border-right:0;border-radius:14px 0 0 14px}
+@media (hover:none){.edge,#tabs{display:none}}
+/* page dots: same look, but a much bigger click target */
+#dots{position:fixed;left:50%;bottom:0;transform:translateX(-50%);z-index:4;display:flex;opacity:.6}
+#dots button{width:34px;height:28px;padding:0;border:0;background:none;cursor:pointer;display:grid;place-items:center}
+#dots button::after{content:"";width:7px;height:7px;border-radius:50%;background:var(--muted);opacity:.45;transition:transform .15s,opacity .15s}
+#dots button:hover::after{opacity:1;transform:scale(1.5)}
+#dots button.on::after{opacity:1;background:var(--accent)}
+/* labelled switcher: slides in when the mouse goes near the top of the screen (PC) */
+#tabs{position:fixed;top:10px;left:50%;z-index:5;display:flex;gap:4px;padding:4px;border-radius:999px;border:1px solid var(--border);
+  background:color-mix(in srgb,var(--surface) 90%,transparent);box-shadow:var(--shadow);backdrop-filter:blur(8px);
+  opacity:0;pointer-events:none;transform:translate(-50%,-8px);transition:opacity .18s,transform .18s}
+#tabs.show,#tabs:hover,#tabs:focus-within{opacity:1;pointer-events:auto;transform:translate(-50%,0)}
+#tabs button{border:0;background:none;padding:9px 20px;border-radius:999px;font-size:14px;font-weight:600;color:var(--muted);cursor:pointer}
+#tabs button:hover{color:var(--text);background:var(--surface2)}
+#tabs button.on{background:var(--accent);color:#fff}
 
 /* server page tiles */
 .stile{--c:var(--up);position:relative;display:flex;flex-direction:column;gap:.45em;min-width:0;min-height:0;overflow:hidden;
@@ -189,18 +200,19 @@ li.grp{padding:6px 8px}
 </head>
 <body>
 <div id="vp"><div id="pager">
-  <section class="page" id="pg-srv" aria-label="Server" style="visibility:hidden">
-    <main id="sgrid"></main>
-    <div id="sempty" hidden><div><b>Nothing to show</b><span id="sempty-t">Loading…</span></div></div>
-  </section>
   <section class="page" id="pg-dash" aria-label="Services">
     <main id="grid"></main>
     <div id="empty" hidden><div><b>No services yet</b>Tap the faint gear in the bottom-right corner to add one.</div></div>
   </section>
+  <section class="page" id="pg-srv" aria-label="Server" style="visibility:hidden">
+    <main id="sgrid"></main>
+    <div id="sempty" hidden><div><b>Nothing to show</b><span id="sempty-t">Loading…</span></div></div>
+  </section>
 </div></div>
-<button class="edge" id="edgeL" title="Server stats  (← key, or swipe right)" aria-label="Open server page">‹</button>
-<button class="edge" id="edgeR" title="Services  (→ key, or swipe left)" aria-label="Back to services" hidden>›</button>
-<div id="dots" hidden><button id="dotS" title="Server stats" aria-label="Server page"></button><button id="dotD" class="on" title="Services" aria-label="Services page"></button></div>
+<button class="edge" id="edgeL" title="Services  (← key, or swipe right)" aria-label="Back to services" hidden>‹</button>
+<button class="edge" id="edgeR" title="Server stats  (→ key, or swipe left)" aria-label="Open server page">›</button>
+<div id="dots" hidden><button id="dotD" class="on" title="Services" aria-label="Services page"></button><button id="dotS" title="Server stats" aria-label="Server page"></button></div>
+<div id="tabs" hidden role="tablist"><button id="tabD" class="on" role="tab">Services</button><button id="tabS" role="tab">Server</button></div>
 
 <button id="gear" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
 <div id="scrim"></div>
@@ -350,13 +362,16 @@ function histEl(t) {
 function buildTile(s) {
   const k = s.addrs.length, a0 = s.addrs[0];
   const t = k > 1 ? h("div", {class: "tile multi"})
-    : a0.tcp ? h("button", {type: "button", class: "tile"})
+    : a0.tcp ? h("div", {class: "tile", role: "button", tabindex: "0"})
     : h("a", {class: "tile", href: a0.url, target: "_blank", rel: "noopener noreferrer"});
   if (s.group > 0) { t.classList.add("g"); t.style.setProperty("--gc", gcolor(s.group)); }
   t.title = s.name + (s.group > 0 ? " · " + ((S.groups[s.group] || {}).name || "group " + s.group) : "");
   const pt = h("span", {class: "pt"}), pill = h("div", {class: "pill"}, h("span", {class: "dot"}), pt);
   if (k === 1) {
-    if (a0.tcp) t.onclick = () => copy(a0.url);
+    if (a0.tcp) {
+      t.onclick = () => copy(a0.url);
+      t.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); copy(a0.url); } };
+    }
     t.append(h("div", {class: "top"}, icoEl(s), pill),
       h("div", {class: "bot"}, h("div", {class: "name", text: s.name}),
         h("div", {class: "host", text: a0.label ? a0.label + " · " + hostOf(a0) : hostOf(a0)}), histEl(t)));
@@ -585,8 +600,8 @@ setInterval(poll, 10000);
 
 /* ---------- pager: services <-> server page (finger-tracked swipe) ---------- */
 const pager = $("pager"), pgSrv = $("pg-srv"), pgDash = $("pg-dash");
-let page = 0, pw = 0, curX = 0, srvOK = S.sys !== false, dragging = false, settleT = 0;   // page 0 = services, 1 = server (on the left)
-function setPW() { pw = document.documentElement.clientWidth; document.documentElement.style.setProperty("--pw", pw + "px"); if (!dragging && !settleT) setX(page ? 0 : -pw, 0); }
+let page = 0, pw = 0, curX = 0, srvOK = S.sys !== false, dragging = false, settleT = 0;   // page 0 = services, 1 = server (on the right)
+function setPW() { pw = document.documentElement.clientWidth; document.documentElement.style.setProperty("--pw", pw + "px"); if (!dragging && !settleT) setX(page ? -pw : 0, 0); }
 function setX(px, ms) { curX = px; pager.style.transitionDuration = (ms || 0) + "ms"; pager.style.setProperty("--x", px + "px"); }
 const liveX = () => { try { return new DOMMatrixReadOnly(getComputedStyle(pager).transform).m41; } catch (e) { return curX; } };
 function showPages(srv, dash) {
@@ -594,8 +609,9 @@ function showPages(srv, dash) {
   pgSrv.inert = !srv; pgDash.inert = !dash;
 }
 function syncChrome() {
-  $("edgeL").hidden = page === 1 || !srvOK; $("edgeR").hidden = page === 0;
-  $("dots").hidden = !srvOK;
+  $("edgeL").hidden = page === 0; $("edgeR").hidden = page === 1 || !srvOK;
+  $("dots").hidden = $("tabs").hidden = !srvOK;
+  $("tabS").classList.toggle("on", page === 1); $("tabD").classList.toggle("on", page === 0);
   $("dotS").classList.toggle("on", page === 1); $("dotD").classList.toggle("on", page === 0);
   try {
     const want = page ? "#server" : "";
@@ -605,7 +621,7 @@ function syncChrome() {
 function goto(p, instant) {
   if (p === 1 && !srvOK) p = 0;
   page = p;
-  const target = p ? 0 : -pw, dist = Math.abs(liveX() - target);
+  const target = p ? -pw : 0, dist = Math.abs(liveX() - target);
   clearTimeout(settleT); settleT = 0; dragging = false;
   showPages(true, true); srvStart();            // both pages visible while travelling
   const ms = instant || !dist ? 0 : clamp(200, 380 * dist / pw + 100, 420);
@@ -613,6 +629,7 @@ function goto(p, instant) {
   const done = () => { settleT = 0; showPages(page === 1, page === 0); if (page === 0) srvStop(); };
   if (ms) settleT = setTimeout(done, ms + 30); else done();
   syncChrome();
+  if (srvOK && !instant && matchMedia("(hover:hover)").matches) showTabs(1300);
 }
 let g0 = null, raf = 0, pendX = 0, noClickUntil = 0;
 const dragTo = x => { pendX = x; if (!raf) raf = requestAnimationFrame(() => { raf = 0; setX(pendX, 0); }); };
@@ -649,8 +666,8 @@ function endDrag(e, cancel) {
   const v = b[0] > a[0] ? (b[1] - a[1]) / (b[0] - a[0]) : 0;                        // px per ms
   let to = page;
   if (!cancel) {
-    if (page === 0 && (dx > pw * .3 || v > .5) && dx > 0) to = 1;
-    else if (page === 1 && (-dx > pw * .3 || v < -.5) && dx < 0) to = 0;
+    if (page === 0 && (-dx > pw * .3 || v < -.5) && dx < 0) to = 1;       // swipe left: services -> server
+    else if (page === 1 && (dx > pw * .3 || v > .5) && dx > 0) to = 0;    // swipe right: server -> services
   }
   if (Math.abs(dx) > 10) noClickUntil = performance.now() + 350;
   setX(liveX(), 0); goto(to);
@@ -660,11 +677,15 @@ pager.addEventListener("pointercancel", e => endDrag(e, true));
 addEventListener("click", e => { if (performance.now() < noClickUntil) { e.preventDefault(); e.stopPropagation(); } }, true);
 
 // PC: edge tabs, dots, arrow keys, trackpad two-finger swipe, /#server
-$("edgeL").onclick = $("dotS").onclick = () => goto(1);
-$("edgeR").onclick = $("dotD").onclick = () => goto(0);
+$("edgeR").onclick = $("dotS").onclick = $("tabS").onclick = () => goto(1);
+$("edgeL").onclick = $("dotD").onclick = $("tabD").onclick = () => goto(0);
+// the labelled pill appears while the mouse is near the top edge, and briefly after every page change
+const tabsEl = $("tabs"); let tabsT = 0;
+const showTabs = ms => { tabsEl.classList.add("show"); clearTimeout(tabsT); tabsT = setTimeout(() => tabsEl.classList.remove("show"), ms); };
+addEventListener("mousemove", e => { if (e.clientY < 70 && srvOK && !panelOpen()) showTabs(1800); }, {passive: true});
 addEventListener("keydown", e => {
   if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || panelOpen() || e.target.closest("input,textarea,select")) return;
-  if (e.key === "ArrowLeft" && page === 0) goto(1); else if (e.key === "ArrowRight" && page === 1) goto(0);
+  if (e.key === "ArrowRight" && page === 0) goto(1); else if (e.key === "ArrowLeft" && page === 1) goto(0);
 });
 let wAcc = 0, wT = 0, wLock = 0;
 addEventListener("wheel", e => {
@@ -673,8 +694,8 @@ addEventListener("wheel", e => {
   if (now < wLock) return;
   if (now - wT > 200) wAcc = 0;
   wT = now; wAcc += e.deltaX;
-  if (wAcc < -70 && page === 0) { goto(1); wLock = now + 600; wAcc = 0; }
-  else if (wAcc > 70 && page === 1) { goto(0); wLock = now + 600; wAcc = 0; }
+  if (wAcc > 70 && page === 0) { goto(1); wLock = now + 600; wAcc = 0; }          // two-finger swipe left
+  else if (wAcc < -70 && page === 1) { goto(0); wLock = now + 600; wAcc = 0; }
 }, {passive: true});
 addEventListener("hashchange", () => goto(location.hash === "#server" ? 1 : 0));
 
