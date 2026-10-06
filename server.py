@@ -723,6 +723,8 @@ class Handler(BaseHTTPRequestHandler):
             full = self.authed()  # no PASSWORD set -> everyone counts as logged in
             peek = "peek=1" in (urlparse(self.path).query or "")
             return self.json({**sysinfo.collect(full, peek), "redacted": not full, "auth_required": bool(PASSWORD)})
+        if m == "GET" and p == ["sys-hist"]:
+            return self.json(sysinfo.history() if sysinfo.SUPPORTED else {"t": [], "s": {}, "now": time.time(), "step": 15})
         if m == "GET" and p == ["history"]:
             with lock:
                 return self.json({"now": time.time(), "ev": history})
@@ -870,7 +872,7 @@ def main():
         server_tiles.update(clean_server_tiles(raw, strict=False))
     except Err:
         pass
-    sysinfo.init(cfg)
+    sysinfo.init(cfg, DATA)
     apply_server_tiles()
     threading.Thread(target=checker, daemon=True).start()
     threading.Thread(target=backup_loop, daemon=True).start()

@@ -26,16 +26,24 @@ _get = lambda key, default="": os.environ.get(key, default)  # replaced by init(
 _lock = threading.Lock()
 
 # tile ids the user can hide
-BUILTIN = ["cpu", "ram", "gpu", "vram", "ollama", "drives", "docker", "procs_cpu", "procs_mem", "frp", "xray"]
+BUILTIN = ["cpu", "ram", "gpu", "vram", "ollama", "drives", "dirs", "docker", "procs_cpu", "procs_mem", "frp", "xray"]
 conf = {"hidden": [], "hide_mounts": [], "cmds": []}  # set by server via configure()
 DEFAULT_HIDE_MOUNTS = ["/boot", "/boot/efi"]
 
 
-def init(getter):
-    global _get
+_data_dir = None
+
+
+def init(getter, data_dir=None):
+    global _get, _data_dir
     _get = getter
+    _data_dir = data_dir
     if SUPPORTED:
+        _load_state()
         threading.Thread(target=_cmd_loop, daemon=True).start()
+        if float(_get("SYS_SAMPLE_SECONDS", str(HIST_STEP)) or 0) > 0:
+            threading.Thread(target=_sampler, daemon=True).start()
+        threading.Thread(target=_du_loop, daemon=True).start()
 
 
 def configure(c):
@@ -588,6 +596,179 @@ def _cmd_loop():
             _cmd_pool.submit(_run_cmd, c)
 
 
+# ---------- last-hour history for sparklines ----------
+# A background sampler keeps ~1 hour of CPU / RAM / GPU values (every 15 s) so a tile can show whether
+# a number is a spike or sustained. A few hundred floats in memory; saved every 5 min so a restart keeps it.
+
+HIST_STEP = 15
+HIST_N = 240
+_samples = []  # [(ts, {series: value})] oldest first
+
+
+def _sample_once(prev_cpu):
+    pt, cur = {}, _cpu_sample()
+    if prev_cpu and cur[0] > prev_cpu[0]:
+        pt["cpu"] = round(100 * (1 - (cur[1] - prev_cpu[1]) / (cur[0] - prev_cpu[0])), 1)
+    try:
+        r = ram()
+        pt["ram"] = round(100 * r["used"] / r["total"], 1)
+    except Exception:
+        pass
+    try:
+        g = gpu()
+        if g:
+            pt["gpu_temp"], pt["gpu_util"] = g[0]["temp"], g[0]["util"]
+            if g[0]["mem_total"]:
+                pt["vram"] = round(100 * g[0]["mem_used"] / g[0]["mem_total"], 1)
+    except Exception:
+        pass
+    return cur, {k: v for k, v in pt.items() if v is not None}
+
+
+def _save_samples():
+    if not _data_dir:
+        return
+    try:
+        with _lock:
+            snap = list(_samples)
+        tmp = os.path.join(_data_dir, "metrics.json.tmp")
+        with open(tmp, "w") as f:
+            json.dump(snap, f)
+        os.replace(tmp, os.path.join(_data_dir, "metrics.json"))
+    except OSError:
+        pass
+
+
+def _sampler():
+    step = max(5.0, float(_get("SYS_SAMPLE_SECONDS", str(HIST_STEP)) or HIST_STEP))
+    prev, last_save = None, time.monotonic()
+    while True:
+        t0 = time.monotonic()
+        try:
+            prev, pt = _sample_once(prev)
+        except Exception:
+            pt = {}
+        if pt:
+            with _lock:
+                _samples.append((int(time.time()), pt))
+                del _samples[:-HIST_N]
+        if t0 - last_save > 300:
+            _save_samples()
+            last_save = t0
+        time.sleep(max(1.0, step - (time.monotonic() - t0)))
+
+
+def history():
+    with _lock:
+        samples = list(_samples)
+    keys = sorted({k for _, p in samples for k in p})
+    return {"now": time.time(), "step": HIST_STEP, "t": [t for t, _ in samples],
+            "s": {k: [p.get(k) for _, p in samples] for k in keys}}
+
+
+# ---------- folder sizes on each drive (like `du -sh /mnt/x/*`) ----------
+# Walking a big disk is heavy I/O, so: one folder at a time, `nice` + lowest `ionice` priority, local disks only
+# (network shares are skipped unless DU_NETWORK=1), refreshed every DU_INTERVAL_HOURS (default 6, 0 = off)
+# and cached on disk so a restart doesn't rescan.
+
+NET_FS = {"cifs", "smb3", "nfs", "nfs4", "davfs", "fuse.sshfs"}
+_du = {}  # mount -> {"ts", "items": [{"name", "size", "dir"}]}
+
+
+def _load_state():
+    if not _data_dir:
+        return
+    now = time.time()
+    try:
+        with open(os.path.join(_data_dir, "metrics.json")) as f:
+            for ts, pt in json.load(f):
+                if isinstance(ts, (int, float)) and now - ts < HIST_STEP * HIST_N and isinstance(pt, dict):
+                    _samples.append((int(ts), pt))
+    except (OSError, ValueError, TypeError):
+        pass
+    try:
+        with open(os.path.join(_data_dir, "dirsizes.json")) as f:
+            d = json.load(f)
+        if isinstance(d, dict):
+            _du.update({k: v for k, v in d.items() if isinstance(v, dict) and isinstance(v.get("items"), list)})
+    except (OSError, ValueError):
+        pass
+
+
+def _local_mounts(include_net):
+    seen, out = set(), []
+    with open("/proc/self/mounts") as f:
+        for line in f:
+            parts = line.split()
+            if len(parts) < 3:
+                continue
+            dev, mp, fs = parts[0], _unescape(parts[1]), parts[2]
+            if fs not in REAL_FS or dev in seen or mp.startswith(SKIP_PREFIX) or (fs in NET_FS and not include_net):
+                continue
+            seen.add(dev)
+            out.append(mp)
+    return out
+
+
+def _du_scan_mount(mp):
+    import stat as _stat
+    du = shutil.which("du")
+    if not du:
+        return None
+    prefix = (["nice", "-n", "19"] if shutil.which("nice") else []) + (["ionice", "-c", "2", "-n", "7"] if shutil.which("ionice") else [])
+    try:
+        names = os.listdir(mp)
+    except OSError:
+        return None
+    items = []
+    for n in names:
+        p = os.path.join(mp, n)
+        try:
+            st = os.lstat(p)
+        except OSError:
+            continue
+        if not _stat.S_ISDIR(st.st_mode):
+            items.append({"name": n, "size": st.st_blocks * 512, "dir": False})
+        elif not os.path.ismount(p):  # a different filesystem isn't part of this drive
+            size = None
+            try:
+                r = subprocess.run(prefix + [du, "-sx", "--block-size=1", "--", p], capture_output=True, text=True, timeout=1800)
+                size = int(r.stdout.split()[0]) if r.stdout.strip() else None  # exit 1 = some unreadable files; total still printed
+            except (subprocess.TimeoutExpired, ValueError, OSError):
+                pass
+            items.append({"name": n, "size": size, "dir": True})
+    items = [i for i in items if i["size"] is not None]
+    items.sort(key=lambda i: -i["size"])
+    return items[:20]
+
+
+def _du_loop():
+    time.sleep(90)
+    while True:
+        try:
+            hours = float(_get("DU_INTERVAL_HOURS", "6") or 0)
+        except ValueError:
+            hours = 6.0
+        if hours > 0 and "dirs" not in conf["hidden"]:
+            skip = set(DEFAULT_HIDE_MOUNTS) | set(conf["hide_mounts"])
+            for mp in _local_mounts(_get("DU_NETWORK") == "1"):
+                if mp in skip or time.time() - _du.get(mp, {}).get("ts", 0) < hours * 3600:
+                    continue
+                items = _du_scan_mount(mp)
+                if items is not None:
+                    with _lock:
+                        _du[mp] = {"ts": time.time(), "items": items}
+                    if _data_dir:
+                        try:
+                            tmp = os.path.join(_data_dir, "dirsizes.json.tmp")
+                            with open(tmp, "w") as f:
+                                json.dump(_du, f)
+                            os.replace(tmp, os.path.join(_data_dir, "dirsizes.json"))
+                        except OSError:
+                            pass
+        time.sleep(600)
+
+
 # ---------- everything for /api/sys ----------
 
 def collect(full, peek=False):
@@ -619,7 +800,9 @@ def collect(full, peek=False):
     if "drives" not in hidden:
         hide = set(DEFAULT_HIDE_MOUNTS) | set(conf["hide_mounts"])
         d = bg("drives", 15, drives)
-        put("drives", [x for x in d if x["mount"] not in hide] if d is not None else None)
+        with_dirs = "dirs" not in hidden
+        put("drives", [({**x, "dirs": _du.get(x["mount"])} if with_dirs and x["mount"] in _du else x)
+                       for x in d if x["mount"] not in hide] if d is not None else None)
         tiles["_mounts"] = [x["mount"] for x in d or []]
     if "docker" not in hidden:
         d = bg("docker", 5, docker)
