@@ -590,10 +590,12 @@ def _cmd_loop():
 
 # ---------- everything for /api/sys ----------
 
-def collect(full):
-    """full=False -> redacted view for visitors who are not logged in."""
+def collect(full, peek=False):
+    """full=False -> redacted view for visitors who are not logged in.
+    peek=True only warms the caches (page just loaded): it must not wake the command tiles."""
     global _viewer, _budget_end
-    _viewer = time.monotonic()
+    if not peek:
+        _viewer = time.monotonic()
     hidden = set(conf["hidden"])
     # start every slow collector first so a cold start waits for the slowest one, not for the sum
     kicks = {"gpu": gpu, "ollama": ollama, "drives": drives, "docker": docker, "frp": frp, "xray": xray}

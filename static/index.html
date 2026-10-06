@@ -16,12 +16,19 @@
 }}
 *{box-sizing:border-box}
 html,body{margin:0;min-height:100%}
+html{overflow-x:hidden;overscroll-behavior-x:none}   /* no browser back-swipe while paging */
 body{background:radial-gradient(1200px 700px at 50% -10%,var(--surface2),var(--bg));background-color:var(--bg);background-attachment:fixed;
   color:var(--text);font:15px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
 button,input{font:inherit;color:inherit}
 
 /* grid: columns/rows/spans are computed in layout() so tiles always fill the whole width */
-#grid{display:grid;width:100%}
+#grid,#sgrid{display:grid;width:100%}
+/* two pages side by side; --x is driven by the finger (see pager code), the server page is on the left */
+:root{--pw:100vw}
+#vp{width:var(--pw);overflow-x:hidden;overflow-y:visible}   /* clips the 2-page strip so it can never widen the mobile layout viewport */
+#pager{display:flex;width:calc(var(--pw)*2);min-height:100dvh;transform:translate3d(var(--x,calc(var(--pw)*-1)),0,0);
+  transition:transform 0ms cubic-bezier(.22,.9,.3,1);touch-action:pan-y pinch-zoom;will-change:transform}
+.page{position:relative;width:var(--pw);flex:none;min-height:100dvh}
 [data-s=up]{--c:var(--up)}[data-s=down]{--c:var(--down)}[data-s=warn]{--c:var(--warn)}[data-s=pend]{--c:var(--pend)}
 .dot{display:inline-block;flex:none;width:.7em;height:.7em;border-radius:50%;background:var(--c,var(--pend));
   box-shadow:0 0 0 .28em color-mix(in srgb,var(--c,var(--pend)) 22%,transparent),0 0 1.1em var(--c,var(--pend))}
@@ -77,9 +84,56 @@ a.tile:hover,button.tile:hover,a.tile:focus-visible,button.tile:focus-visible{tr
 .hl{margin-top:.3em;font-size:calc(var(--hs,12px)*.9);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
 .hl.bad{color:var(--down)}
 [data-h=bar] .hl{display:none}
-#empty{position:fixed;inset:0;display:grid;place-items:center;text-align:center;color:var(--muted);pointer-events:none;padding:20px}
-#empty b{display:block;color:var(--text);font-size:22px;margin-bottom:6px}
+#empty,#sempty{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:var(--muted);pointer-events:none;padding:20px}
+#empty b,#sempty b{display:block;color:var(--text);font-size:22px;margin-bottom:6px}
 [hidden]{display:none!important}
+
+.edge{position:fixed;top:50%;z-index:4;width:18px;height:64px;margin-top:-32px;border:1px solid var(--border);background:var(--surface);
+  color:var(--muted);cursor:pointer;opacity:.12;transition:opacity .2s,width .2s;display:grid;place-items:center;padding:0;font-size:16px;line-height:1}
+.edge:hover,.edge:focus-visible{opacity:1;width:26px}
+#edgeL{left:0;border-left:0;border-radius:0 12px 12px 0}
+#edgeR{right:0;border-right:0;border-radius:12px 0 0 12px}
+@media (hover:none){.edge{display:none}}
+#dots{position:fixed;left:50%;bottom:3px;transform:translateX(-50%);z-index:4;display:flex;gap:7px;padding:3px 6px;opacity:.5}
+#dots button{width:6px;height:6px;padding:0;border:0;border-radius:50%;background:var(--muted);opacity:.45;cursor:pointer}
+#dots button.on{opacity:1;background:var(--accent)}
+
+/* server page tiles */
+.stile{--c:var(--up);position:relative;display:flex;flex-direction:column;gap:.45em;min-width:0;min-height:0;overflow:hidden;
+  padding:var(--tp,12px);border-radius:var(--r,18px);background:var(--surface);border:1px solid var(--border);color:inherit;text-align:left;font-size:var(--hs,12px)}
+.stile[data-s=warn]{--c:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,var(--border))}
+.stile[data-s=down]{--c:var(--down);border-color:color-mix(in srgb,var(--down) 55%,var(--border))}
+.stile[data-s=pend]{--c:var(--pend)}
+.sh{display:flex;justify-content:space-between;align-items:baseline;gap:.6em;color:var(--muted);flex:none;min-width:0}
+.sh b{color:var(--text);font-weight:650;letter-spacing:-.01em;font-size:1.12em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:0 1 auto;max-width:75%}
+.sh span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1 1 0;text-align:right}
+.sbody{flex:1;min-height:0;display:flex;flex-direction:column;justify-content:space-between;gap:.45em;overflow:hidden}
+.big{font-size:var(--bs,28px);font-weight:700;letter-spacing:-.03em;line-height:1;color:var(--c);font-variant-numeric:tabular-nums;white-space:nowrap}
+.big small{font-size:.42em;font-weight:600;color:var(--muted);margin-left:.2em;letter-spacing:0}
+.sub2{color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bar{height:var(--bh,6px);border-radius:3px;background:color-mix(in srgb,var(--text) 10%,transparent);overflow:hidden;flex:none}
+.bar i{display:block;height:100%;background:var(--c);border-radius:3px;transition:width .6s}
+.rows{display:grid;gap:.25em;min-height:0;overflow:hidden;align-content:start}
+.rows>div{display:flex;justify-content:space-between;gap:.7em;min-width:0}
+.rows>div>span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rows>div>span:last-child{color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.rows .bad>span:last-child,.rows .bad>span:first-child{color:var(--down)}
+.rows .ok>span:last-child{color:var(--up)}
+.rows .act>span:first-child::before{content:"● ";color:var(--up)}
+.chips{color:var(--muted);overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:var(--cl,2);line-height:1.35}
+pre.cmd{margin:0;flex:1;min-height:0;overflow:hidden;font:var(--cf,11px)/1.3 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre;color:var(--text)}
+html.scroll-mode pre.cmd{overflow:auto}
+button.stile{cursor:pointer;justify-content:center;align-items:center;text-align:center;border-style:dashed;color:var(--muted)}
+button.stile:hover{border-color:var(--accent);color:var(--text)}
+.chk{display:flex;flex-wrap:wrap;gap:6px}
+.chk label{display:flex;align-items:center;gap:6px;padding:5px 10px;border:1px solid var(--border);border-radius:999px;background:var(--bg);color:var(--text);font-size:13px;cursor:pointer;grid-template-columns:none}
+.crow label{white-space:nowrap}
+.chk label.off{color:var(--muted);text-decoration:line-through}
+.chk input{width:auto;margin:0;accent-color:var(--accent)}
+.crow{display:grid;gap:6px;padding:8px;border:1px solid var(--border);border-radius:12px;background:var(--bg)}
+.crow input{background:var(--surface)}
+.crow input.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px}
+.warnbox{border:1px solid color-mix(in srgb,var(--warn) 50%,var(--border));background:color-mix(in srgb,var(--warn) 9%,transparent);border-radius:10px;padding:8px 10px;font-size:13px;color:var(--text)}
 
 #gear{position:fixed;right:max(14px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom));z-index:5;width:38px;height:38px;
   border-radius:50%;border:1px solid var(--border);background:var(--surface);display:grid;place-items:center;cursor:pointer;
@@ -134,8 +188,19 @@ li.grp{padding:6px 8px}
 </style>
 </head>
 <body>
-<main id="grid"></main>
-<div id="empty" hidden><div><b>No services yet</b>Tap the faint gear in the bottom-right corner to add one.</div></div>
+<div id="vp"><div id="pager">
+  <section class="page" id="pg-srv" aria-label="Server" style="visibility:hidden">
+    <main id="sgrid"></main>
+    <div id="sempty" hidden><div><b>Nothing to show</b><span id="sempty-t">Loading…</span></div></div>
+  </section>
+  <section class="page" id="pg-dash" aria-label="Services">
+    <main id="grid"></main>
+    <div id="empty" hidden><div><b>No services yet</b>Tap the faint gear in the bottom-right corner to add one.</div></div>
+  </section>
+</div></div>
+<button class="edge" id="edgeL" title="Server stats  (← key, or swipe right)" aria-label="Open server page">‹</button>
+<button class="edge" id="edgeR" title="Services  (→ key, or swipe left)" aria-label="Back to services" hidden>›</button>
+<div id="dots" hidden><button id="dotS" title="Server stats" aria-label="Server page"></button><button id="dotD" class="on" title="Services" aria-label="Services page"></button></div>
 
 <button id="gear" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
 <div id="scrim"></div>
@@ -178,6 +243,17 @@ li.grp{padding:6px 8px}
       <div class="btns" style="margin-top:10px"><button class="btn" id="gsave">Save groups</button></div>
     </div>
 
+    <h3>Server page</h3>
+    <div class="btns"><button type="button" class="btn sm" id="srvopen">Open server page</button></div>
+    <p class="note" style="margin:10px 0 6px">Tiles to show</p>
+    <div class="chk" id="stog"></div>
+    <p class="note" style="margin:12px 0 6px" id="mnote">Drives to show</p>
+    <div class="chk" id="mtog"></div>
+    <p class="note" style="margin:14px 0 6px">Command tiles <span style="opacity:.8">(like <code>watch -n 1</code>)</span></p>
+    <div class="warnbox" id="cwarn"></div>
+    <div class="stack" id="clist" style="margin-top:8px"></div>
+    <div class="btns" style="margin-top:8px"><button type="button" class="btn sm" id="cadd">+ command tile</button><button type="button" class="btn primary" id="ssave2">Save server page</button></div>
+
     <h3>Backups</h3>
     <form class="stack" id="bform">
       <label>Folder<input id="bpath"></label>
@@ -205,7 +281,7 @@ const $ = id => document.getElementById(id);
 const h = (tag, attrs, ...kids) => {
   const e = document.createElement(tag);
   for (const k in attrs || {}) k === "text" ? e.textContent = attrs[k] : e.setAttribute(k, attrs[k]);
-  e.append(...kids);
+  e.append(...kids.filter(k => k != null && k !== false));
   return e;
 };
 const clamp = (lo, v, hi) => Math.max(lo, Math.min(hi, v));
@@ -446,13 +522,12 @@ function sizeTile(t, tw, th, k) {
 let mode = "fit";
 try { if (localStorage.getItem("wc_mode") === "scroll") mode = "scroll"; } catch (e) {}
 let ord = [];
-function layout() {
-  const g = $("grid"), n = ord.length, root = document.documentElement, fit = mode === "fit";
-  root.style.overflow = fit ? "hidden" : "";
+// Generic board layout: picks columns, fills the screen edge to edge and calls sizeFn(tile, w, h, i) per tile.
+function boardLayout(g, spans, sizeFn) {
+  const n = spans.length, root = document.documentElement, fit = mode === "fit";
   if (!n) return;
   const gap = fit ? (n > 24 ? 6 : n > 10 ? 8 : 12) : 14, pad = fit ? gap + 2 : 18;
-  const W = root.clientWidth - 2 * pad, H = Math.max(60, innerHeight - 2 * pad);
-  const spans = ord.map(s => spanOf(s.addrs.length));
+  const W = pw - 2 * pad, H = Math.max(60, innerHeight - 2 * pad);
   let best = null;
   if (fit) {
     for (let cols = 1; cols <= Math.min(24, n + 2); cols++) {
@@ -470,13 +545,21 @@ function layout() {
   s.gridTemplateColumns = `repeat(${cols},minmax(0,1fr))`; s.gridTemplateRows = `repeat(${p.rows},${ch}px)`;
   s.gap = gap + "px"; s.padding = pad + "px";
   s.height = fit ? innerHeight + "px" : "auto";
-  ord.forEach((sv, i) => {
+  for (let i = 0; i < n; i++) {
     const t = g.children[i], q = p.pos[i];
-    if (!t) return;
+    if (!t) continue;
     t.style.gridColumn = `${q.c + 1} / span ${q.s}`; t.style.gridRow = q.r + 1;
-    sizeTile(t, q.s * cw + (q.s - 1) * gap, ch, sv.addrs.length);
-  });
+    sizeFn(t, q.s * cw + (q.s - 1) * gap, ch, i);
+  }
+}
+function layout() {
+  const root = document.documentElement, fit = mode === "fit";
+  root.style.overflow = fit ? "hidden" : "";
+  root.classList.toggle("scroll-mode", !fit);
+  setPW();
+  boardLayout($("grid"), ord.map(s => spanOf(s.addrs.length)), (t, tw, th, i) => sizeTile(t, tw, th, ord[i].addrs.length));
   drawHist();
+  srvLayout();
 }
 
 let lastKey = "";
@@ -500,12 +583,284 @@ addEventListener("orientationchange", () => setTimeout(layout, 200));
 document.addEventListener("visibilitychange", poll);
 setInterval(poll, 10000);
 
+/* ---------- pager: services <-> server page (finger-tracked swipe) ---------- */
+const pager = $("pager"), pgSrv = $("pg-srv"), pgDash = $("pg-dash");
+let page = 0, pw = 0, curX = 0, srvOK = S.sys !== false, dragging = false, settleT = 0;   // page 0 = services, 1 = server (on the left)
+function setPW() { pw = document.documentElement.clientWidth; document.documentElement.style.setProperty("--pw", pw + "px"); if (!dragging && !settleT) setX(page ? 0 : -pw, 0); }
+function setX(px, ms) { curX = px; pager.style.transitionDuration = (ms || 0) + "ms"; pager.style.setProperty("--x", px + "px"); }
+const liveX = () => { try { return new DOMMatrixReadOnly(getComputedStyle(pager).transform).m41; } catch (e) { return curX; } };
+function showPages(srv, dash) {
+  pgSrv.style.visibility = srv ? "visible" : "hidden"; pgDash.style.visibility = dash ? "visible" : "hidden";
+  pgSrv.inert = !srv; pgDash.inert = !dash;
+}
+function syncChrome() {
+  $("edgeL").hidden = page === 1 || !srvOK; $("edgeR").hidden = page === 0;
+  $("dots").hidden = !srvOK;
+  $("dotS").classList.toggle("on", page === 1); $("dotD").classList.toggle("on", page === 0);
+  try {
+    const want = page ? "#server" : "";
+    if (location.hash !== want) history.replaceState(null, "", location.pathname + location.search + want);
+  } catch (e) {}
+}
+function goto(p, instant) {
+  if (p === 1 && !srvOK) p = 0;
+  page = p;
+  const target = p ? 0 : -pw, dist = Math.abs(liveX() - target);
+  clearTimeout(settleT); settleT = 0; dragging = false;
+  showPages(true, true); srvStart();            // both pages visible while travelling
+  const ms = instant || !dist ? 0 : clamp(200, 380 * dist / pw + 100, 420);
+  setX(target, ms);
+  const done = () => { settleT = 0; showPages(page === 1, page === 0); if (page === 0) srvStop(); };
+  if (ms) settleT = setTimeout(done, ms + 30); else done();
+  syncChrome();
+}
+let g0 = null, raf = 0, pendX = 0, noClickUntil = 0;
+const dragTo = x => { pendX = x; if (!raf) raf = requestAnimationFrame(() => { raf = 0; setX(pendX, 0); }); };
+pager.addEventListener("pointerdown", e => {
+  if (e.pointerType === "mouse" || !srvOK || !e.isPrimary) return;                 // desktop: keys / edge tabs / trackpad
+  if (e.clientX < 20 || e.clientX > pw - 20) return;                               // leave OS edge gestures alone
+  if (e.target.closest("input,textarea,select,.noswipe")) return;
+  g0 = {id: e.pointerId, x0: e.clientX, y0: e.clientY, lock: null, samples: [[e.timeStamp, e.clientX]]};
+});
+pager.addEventListener("pointermove", e => {
+  const g = g0; if (!g || e.pointerId !== g.id) return;
+  const dx = e.clientX - g.x0, dy = e.clientY - g.y0;
+  if (!g.lock) {
+    if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+    g.lock = Math.abs(dx) > Math.abs(dy) * 1.3 ? "h" : "v";
+    if (g.lock === "h") {                                                           // take over: follow the finger
+      clearTimeout(settleT); settleT = 0; dragging = true;
+      g.base = liveX(); showPages(true, true); srvStart();
+      try { pager.setPointerCapture(e.pointerId); } catch (err) {}
+    }
+  }
+  if (g.lock !== "h") return;
+  g.samples.push([e.timeStamp, e.clientX]); while (g.samples.length > 2 && e.timeStamp - g.samples[0][0] > 100) g.samples.shift();
+  let x = g.base + dx;
+  if (x > 0) x *= .3; else if (x < -pw) x = -pw + (x + pw) * .3;                   // rubber band past either end
+  dragTo(x);
+});
+function endDrag(e, cancel) {
+  const g = g0; if (!g || e.pointerId !== g.id) return;
+  g0 = null;
+  if (g.lock !== "h") return;
+  cancelAnimationFrame(raf); raf = 0;
+  const dx = e.clientX - g.x0, a = g.samples[0], b = g.samples[g.samples.length - 1];
+  const v = b[0] > a[0] ? (b[1] - a[1]) / (b[0] - a[0]) : 0;                        // px per ms
+  let to = page;
+  if (!cancel) {
+    if (page === 0 && (dx > pw * .3 || v > .5) && dx > 0) to = 1;
+    else if (page === 1 && (-dx > pw * .3 || v < -.5) && dx < 0) to = 0;
+  }
+  if (Math.abs(dx) > 10) noClickUntil = performance.now() + 350;
+  setX(liveX(), 0); goto(to);
+}
+pager.addEventListener("pointerup", e => endDrag(e, false));
+pager.addEventListener("pointercancel", e => endDrag(e, true));
+addEventListener("click", e => { if (performance.now() < noClickUntil) { e.preventDefault(); e.stopPropagation(); } }, true);
+
+// PC: edge tabs, dots, arrow keys, trackpad two-finger swipe, /#server
+$("edgeL").onclick = $("dotS").onclick = () => goto(1);
+$("edgeR").onclick = $("dotD").onclick = () => goto(0);
+addEventListener("keydown", e => {
+  if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey || panelOpen() || e.target.closest("input,textarea,select")) return;
+  if (e.key === "ArrowLeft" && page === 0) goto(1); else if (e.key === "ArrowRight" && page === 1) goto(0);
+});
+let wAcc = 0, wT = 0, wLock = 0;
+addEventListener("wheel", e => {
+  if (!srvOK || panelOpen() || Math.abs(e.deltaX) <= Math.abs(e.deltaY) || e.target.closest(".noswipe")) return;
+  const now = performance.now();
+  if (now < wLock) return;
+  if (now - wT > 200) wAcc = 0;
+  wT = now; wAcc += e.deltaX;
+  if (wAcc < -70 && page === 0) { goto(1); wLock = now + 600; wAcc = 0; }
+  else if (wAcc > 70 && page === 1) { goto(0); wLock = now + 600; wAcc = 0; }
+}, {passive: true});
+addEventListener("hashchange", () => goto(location.hash === "#server" ? 1 : 0));
+
+/* ---------- server page: live host stats as tiles ---------- */
+const srv = {on: false, d: null, timer: 0, key: "", cfg: null};
+const fmtB = b => b >= 2 ** 40 ? (b / 2 ** 40).toFixed(1) + " TB" : b >= 2 ** 30 ? (b / 2 ** 30).toFixed(b < 10 * 2 ** 30 ? 1 : 0) + " GB" : Math.round(b / 2 ** 20) + " MB";
+const fmtG = b => b >= 2 ** 40 ? (b / 2 ** 40).toFixed(1) + "T" : b >= 2 ** 30 ? Math.round(b / 2 ** 30) + "G" : Math.round(b / 2 ** 20) + "M";
+const tone = (v, w, bd) => v == null ? "pend" : v >= bd ? "down" : v >= w ? "warn" : "up";
+const head = (a, b) => h("div", {class: "sh"}, h("b", {text: a}), h("span", {text: b || ""}));
+const big = (v, unit) => h("div", {class: "big"}, document.createTextNode(v), h("small", {text: unit || ""}));
+const bar = pct => { const i = h("i"); i.style.width = clamp(0, pct || 0, 100) + "%"; return h("div", {class: "bar"}, i); };
+const sub = t => h("div", {class: "sub2", text: t});
+const rowsOf = (list, cls) => h("div", {class: "rows"}, ...list.map(r => { const d = h("div", {class: r.cls || ""}, h("span", {text: r[0]}), h("span", {text: r[1] || ""})); if (r.title) d.title = r.title; return d; }));
+const num = (v, d) => v == null ? "–" : (+v).toFixed(d || 0);
+const ago = s => s < 2 ? "now" : s < 90 ? Math.round(s) + "s ago" : Math.round(s / 60) + "m ago";
+
+// one renderer per tile type: draw(tile, data, ctx); ctx.rows = how many list rows fit
+const DRAW = {
+  gpu(t, {g, i, n}) {
+    t.dataset.s = tone(g.temp, 75, 85);
+    t.replaceChildren(head(n > 1 ? "GPU " + i : "GPU", g.name.replace(/^(NVIDIA|Tesla)\s+/i, "")), h("div", {class: "sbody"},
+      big(num(g.temp), "°C"), h("div", {}, sub(`${num(g.util)}% load${g.power != null ? " · " + num(g.power) + " W" : ""}`), bar(g.util))));
+  },
+  vram(t, {g, i, n}) {
+    const pct = g.mem_total ? 100 * g.mem_used / g.mem_total : null; t.dataset.s = tone(pct, 85, 95);
+    t.replaceChildren(head(n > 1 ? "VRAM " + i : "VRAM", ""), h("div", {class: "sbody"},
+      big(num(pct), "%"), h("div", {}, sub(`${fmtB(g.mem_used * 2 ** 20)} / ${fmtB(g.mem_total * 2 ** 20)}`), bar(pct))));
+  },
+  ram(t, d) {
+    const pct = 100 * d.used / d.total; t.dataset.s = tone(pct, 85, 95);
+    t.replaceChildren(head("RAM", d.swap_total ? `swap ${fmtB(d.swap_used)}` : ""), h("div", {class: "sbody"},
+      big(num(pct), "%"), h("div", {}, sub(`${fmtB(d.used)} / ${fmtB(d.total)}`), bar(pct))));
+  },
+  cpu(t, d) {
+    t.dataset.s = tone(d.pct, 80, 95);
+    t.replaceChildren(head("Load", `${d.cores} cores`), h("div", {class: "sbody"},
+      big(num(d.pct), "%"), h("div", {}, sub("avg " + d.load.join(" · ")), bar(d.pct))));
+  },
+  drive(t, d, c) {
+    if (d.stale) { t.dataset.s = "pend"; t.replaceChildren(head(d.mount, d.fstype), h("div", {class: "sbody"}, big("?", ""), sub("not responding"))); return; }
+    t.dataset.s = tone(d.pct, 90, 95);
+    t.replaceChildren(head(d.mount, d.fstype), h("div", {class: "sbody"},
+      big(num(d.pct), "%"), h("div", {}, sub(c.tw >= 215 ? `${fmtB(d.avail)} left · ${fmtB(d.used)} used` : `${fmtG(d.avail)} left · ${fmtG(d.used)} used`), bar(d.pct))));
+  },
+  ollama(t, d, c) {
+    t.dataset.s = d.loaded.length ? "up" : "pend";
+    const R = c.rows, loaded = d.loaded.slice(0, Math.max(1, R - 1));
+    const rows = d.loaded.length
+      ? loaded.map(m => Object.assign([m.name, fmtB(m.vram || m.size) + " VRAM"], {cls: "act", title: m.expires ? "unloads " + new Date(m.expires).toLocaleTimeString() : ""}))
+      : [["nothing loaded", ""]];
+    const chips = h("div", {class: "chips", text: d.available.map(m => m.name).join(" · ")});
+    chips.style.setProperty("--cl", Math.max(1, R - rows.length));
+    t.replaceChildren(head("Ollama", `${d.loaded.length} loaded · ${d.available.length} models`),
+      h("div", {class: "sbody"}, rowsOf(rows), d.available.length ? chips : null));
+  },
+  docker(t, d, c) {
+    if (d.redacted) { t.dataset.s = "up"; t.replaceChildren(head("Docker", ""), h("div", {class: "sbody"}, big(d.count, "running"), sub("log in for the list"))); return; }
+    t.dataset.s = d.some(x => x.bad) ? "warn" : "up";
+    const shown = d.slice(0, c.rows);
+    t.replaceChildren(head("Docker", `${d.length} running`), h("div", {class: "sbody"}, rowsOf(shown.map(x =>
+      Object.assign([x.name, x.status.replace(/^Up\s+/, "")], {cls: x.bad ? "bad" : "", title: x.image})).concat(d.length > shown.length ? [["+" + (d.length - shown.length) + " more", ""]] : []))));
+  },
+  procs(t, {title, rows, by}, c) {
+    t.dataset.s = "up";
+    const top = rows.slice(0, c.rows);
+    t.replaceChildren(head(title, ""), h("div", {class: "sbody"}, rowsOf(top.map(p =>
+      Object.assign([p.name, by === "cpu" ? p.cpu.toFixed(1) + "%" : fmtB(p.rss)], {title: `${p.name} · pid ${p.pid} · ${p.user}`})))));
+  },
+  frp(t, d, c) {
+    t.dataset.s = d.active !== "active" ? "down" : d.ping == null ? "warn" : "up";
+    if (d.redacted) {
+      t.replaceChildren(head("frp", ""), h("div", {class: "sbody"}, big(d.ping != null ? d.ping : "–", "ms"), sub(`${d.active} · ${d.up}/${d.n} ports up`)));
+      return;
+    }
+    const ps = d.proxies.slice(0, Math.max(1, c.rows - 1));
+    const label = p => `${p.name} ${p.local ?? ""}${p.remote != null ? " → " + p.remote : ""}`;
+    t.replaceChildren(head("frp", `${d.proto || ""} · ${d.server || ""}`), h("div", {class: "sbody"},
+      sub(`${d.active} · tunnel ${d.ping != null ? d.ping + " ms" : "no reply"}`),
+      rowsOf(ps.map(p => Object.assign([label(p), p.up === false ? "down" : p.ms != null ? p.ms + " ms" : p.type], {cls: p.up === false ? "bad" : p.up ? "ok" : ""})))));
+  },
+  xray(t, d, c) {
+    t.dataset.s = d.active !== "active" ? "down" : d.ok ? "up" : "warn";
+    if (d.redacted) { t.replaceChildren(head("xray", ""), h("div", {class: "sbody"}, big(d.ping != null ? d.ping : "–", "ms"), sub(d.active + (d.ok === false ? " · proxy not answering" : "")))); return; }
+    const outs = d.outbounds.slice(0, Math.max(0, c.rows - 2));
+    t.replaceChildren(head("xray", d.name ? `${d.name}${d.name_kind === "fastest" ? " (fastest)" : ""}` : ""), h("div", {class: "sbody"},
+      h("div", {}, big(d.ping != null ? d.ping : "–", "ms"), sub(`${d.active}${d.exit_ip ? " · exit " + d.exit_ip : ""}`)),
+      outs.length ? rowsOf(outs.map(o => Object.assign([o.tag, o.ms != null ? o.ms + " ms" : "down"], {cls: o.ms == null ? "bad" : o.active ? "act" : "", title: `${o.address}:${o.port}`}))) : null));
+  },
+  cmd(t, d, c) {
+    t.dataset.s = d.out == null ? "pend" : d.rc === 0 ? "up" : "down";
+    const lines = (d.out || "").replace(/\n+$/, "").split("\n");
+    const longest = Math.min(120, Math.max(10, ...lines.map(l => l.length)));
+    const fs = clamp(7, (c.tw - 2 * c.tp) / (longest * .61), c.hs + 2);   // monospace: ~0.6em per char
+    const rows = Math.max(1, Math.floor((c.th - 2 * c.tp - c.hs * 2.4) / (fs * 1.3)));
+    const shown = mode === "fit" ? lines.slice(0, rows) : lines;
+    const note = d.why === "timeout" ? "timed out" : d.why === "truncated" ? "output cut" : d.rc ? "exit " + d.rc : "";
+    t.replaceChildren(head(d.name, `every ${d.interval}s · ${d.out == null ? "waiting…" : ago(srv.d.t - d.ts)}${note ? " · " + note : ""}`),
+      Object.assign(h("pre", {class: "cmd noswipe", text: d.out == null ? "" : shown.join("\n")}), {style: `font-size:${fs}px`}));
+  },
+};
+function lockTile(list) {
+  const b = h("button", {type: "button", class: "stile"}, h("div", {}, h("div", {text: "🔒 Log in to see more", style: "font-weight:650;color:var(--text);font-size:1.15em"}), h("div", {text: list.join(" · "), style: "margin-top:.3em"})));
+  b.onclick = () => openPanel(true);
+  b._draw = () => {};
+  return b;
+}
+function srvItems(d) {
+  const t = d.tiles, out = [], add = (key, span, kind, data) => out.push({key, span, kind, data});
+  (t.gpu || []).forEach((g, i, a) => add("gpu" + i, 1, "gpu", {g, i, n: a.length}));
+  (t.vram || []).forEach((g, i, a) => add("vram" + i, 1, "vram", {g, i, n: a.length}));
+  if (t.ram) add("ram", 1, "ram", t.ram);
+  if (t.cpu) add("cpu", 1, "cpu", t.cpu);
+  if (t.xray) add("xray", 2, "xray", t.xray);
+  if (t.frp) add("frp", 2, "frp", t.frp);
+  if (t.ollama) add("ollama", 2, "ollama", t.ollama);
+  if (t.docker) add("docker", 2, "docker", t.docker);
+  if (t.procs_cpu) add("pc", 2, "procs", {title: "Top CPU", rows: t.procs_cpu, by: "cpu"});
+  if (t.procs_mem) add("pm", 2, "procs", {title: "Top memory", rows: t.procs_mem, by: "mem"});
+  (t.drives || []).forEach(x => add("d:" + x.mount, 1, "drive", x));
+  (d.cmds || []).forEach(c => add("c:" + c.id, c.wide === false ? 1 : 2, "cmd", c));
+  if (d.redacted && d.locked && d.locked.length) add("lock", 2, "lock", d.locked);
+  return out;
+}
+function srvApply(d) {
+  srv.d = d;
+  if (!d.supported) { srvOK = false; syncChrome(); if (page === 1) goto(0); return; }
+  srvOK = true;
+  const items = srvItems(d), key = items.map(i => i.key + ":" + i.span).join("|"), g = $("sgrid");
+  if (key !== srv.key) {
+    srv.key = key; srv.items = items;
+    g.replaceChildren(...items.map(i => { const t = i.kind === "lock" ? lockTile(i.data) : h("div", {class: "stile"}); t._kind = i.kind; return t; }));
+  }
+  srv.items = items;
+  items.forEach((it, i) => { const t = g.children[i]; t._data = it.data; if (t._kind !== "lock") drawSrv(t); });
+  $("sempty").hidden = items.length > 0;
+  if (!items.length) $("sempty-t").textContent = "Every tile is hidden, or this host has nothing to report.";
+  syncChrome();
+  if (key !== srv.laid) { srv.laid = key; srvLayout(); }
+}
+function drawSrv(t) {
+  const ctx = {rows: t._rows || 4, tw: t._tw || 200, th: t._th || 150, tp: t._tp || 10, hs: t._hs || 12};
+  const sig = JSON.stringify(t._data) + "|" + Object.values(ctx).join(",") + "|" + mode;
+  if (sig === t._sig) return;
+  t._sig = sig;
+  try { DRAW[t._kind](t, t._data, ctx); } catch (e) { t.textContent = String(e); }
+}
+function sizeSrv(t, tw, th) {
+  const m = Math.min(tw, th), tp = clamp(6, m * .07, 16), hs = clamp(9, Math.min(tw * .075, th * .1), 14), st = t.style;
+  st.setProperty("--tp", tp + "px"); st.setProperty("--r", clamp(8, m * .12, 20) + "px");
+  st.setProperty("--hs", hs + "px"); st.setProperty("--bs", clamp(18, Math.min(tw * .22, th * .3), 56) + "px");
+  st.setProperty("--bh", clamp(3, th * .035, 7) + "px"); st.setProperty("--cf", clamp(8, hs, 13) + "px");
+  const rows = Math.max(1, Math.floor((th - 2 * tp - hs * 2.4) / (hs * 1.5)));
+  t._rows = rows; t._tw = Math.round(tw); t._th = Math.round(th); t._tp = tp; t._hs = hs;
+}
+function srvLayout() {
+  const g = $("sgrid"), n = srv.items ? srv.items.length : 0;
+  if (!n || g.children.length !== n) return;
+  boardLayout(g, srv.items.map(i => i.span), (t, tw, th) => { sizeSrv(t, tw, th); if (t._kind !== "lock" && t._data) drawSrv(t); });
+}
+async function srvPoll() {
+  if (!srv.on) return;
+  try {
+    const r = await fetch("/api/sys");
+    if (r.ok && srv.on) srvApply(await r.json());
+  } catch (e) {}
+  if (!srv.on) return;
+  const iv = srv.d && srv.d.cmds && srv.d.cmds.length ? Math.min(...srv.d.cmds.map(c => c.interval)) : 3;
+  srv.timer = setTimeout(srvPoll, clamp(1000, iv * 1000, 3000));
+}
+function srvStart() {
+  if (srv.on || document.hidden) return;
+  srv.on = true;
+  if (!srv.d) { $("sempty-t").textContent = "Loading…"; $("sempty").hidden = false; }
+  srvPoll();
+}
+// warm the server's caches shortly after load so the first swipe already has data (peek: doesn't start command tiles)
+setTimeout(() => { if (!srv.d && !srv.on) fetch("/api/sys?peek=1").catch(() => {}); }, 2500);
+function srvStop() { srv.on = false; clearTimeout(srv.timer); }
+document.addEventListener("visibilitychange", () => { if (document.hidden) srvStop(); else if (page === 1 || dragging) srvStart(); });
+
 /* ---------- panel ---------- */
 const panelOpen = () => document.body.classList.contains("open");
 function openPanel(v) {
   document.body.classList.toggle("open", v);
   $("panel").setAttribute("aria-hidden", !v);
-  if (v) { applyAuth(); if (S.authed || !S.auth_required) { renderList(); renderGroups(); loadBackups(); } }
+  if (v) { applyAuth(); if (S.authed || !S.auth_required) { renderList(); renderGroups(); loadBackups(); loadSrvCfg(); } }
 }
 function applyAuth() {
   const can = !S.auth_required || S.authed;
@@ -527,7 +882,8 @@ addEventListener("keydown", e => { if (e.key === "Escape") openPanel(false); });
 $("lform").onsubmit = act(async e => {
   e.preventDefault();
   await api("POST", "/api/login", {password: $("pw").value});
-  $("pw").value = ""; S.authed = true; applyAuth(); renderList(); renderGroups(); loadBackups();
+  $("pw").value = ""; S.authed = true; applyAuth(); renderList(); renderGroups(); loadBackups(); loadSrvCfg();
+  if (page === 1 || srv.on) { srv.key = ""; srvStop(); srvStart(); }
 });
 $("logout").onclick = act(async e => { e.preventDefault(); await api("POST", "/api/logout"); S.authed = false; applyAuth(); });
 
@@ -646,9 +1002,65 @@ $("bfile").onchange = act(async e => {
   toast("Restored"); await poll(); setTimeout(poll, 3000);
 });
 
+/* server page settings: which tiles to show + command tiles */
+const TILE_NAMES = {cpu: "Load", ram: "RAM", gpu: "GPU temp", vram: "VRAM", ollama: "Ollama", drives: "Drives", docker: "Docker", procs_cpu: "Top CPU", procs_mem: "Top memory", frp: "frp", xray: "xray"};
+let sdraft = null;
+function cmdRow(c) {
+  const name = h("input", {placeholder: "Title", maxlength: 40}), cmd = h("input", {class: "mono", placeholder: "command, e.g. top -bn1 | head -15", maxlength: 500, autocapitalize: "off", spellcheck: "false"});
+  const iv = h("input", {type: "number", min: 1, max: 3600, step: 1, title: "Run every N seconds (like watch -n N)"}), wide = h("input", {type: "checkbox"});
+  const del = h("button", {type: "button", class: "btn sm danger", text: "−", title: "Remove"});
+  name.value = c.name || ""; cmd.value = c.cmd || ""; iv.value = c.interval || 5; wide.checked = c.wide !== false;
+  const el = h("div", {class: "crow"}, h("div", {class: "cols"}, name, h("div", {style: "display:flex;gap:6px;align-items:center"}, h("span", {class: "note", style: "margin:0", text: "every"}), iv, h("span", {class: "note", style: "margin:0", text: "s"}))),
+    cmd, h("div", {style: "display:flex;justify-content:space-between;align-items:center"}, h("label", {style: "display:flex;gap:6px;align-items:center;grid-template-columns:none"}, wide, document.createTextNode("wide tile")), del));
+  const r = {el, get: () => ({id: c.id, name: name.value, cmd: cmd.value, interval: iv.value, wide: wide.checked})};
+  del.onclick = () => { sdraft.cmds = sdraft.cmds.filter(x => x !== r); el.remove(); };
+  return r;
+}
+function renderSrvCfg() {
+  const cfg = srv.cfg; if (!cfg) return;
+  sdraft = {hidden: new Set(cfg.hidden), mounts: new Set(cfg.hide_mounts), cmds: []};
+  $("stog").replaceChildren(...cfg.builtin.map(id => {
+    const cb = h("input", {type: "checkbox"}); cb.checked = !sdraft.hidden.has(id);
+    const lb = h("label", {class: cb.checked ? "" : "off"}, cb, document.createTextNode(TILE_NAMES[id] || id));
+    cb.onchange = () => { cb.checked ? sdraft.hidden.delete(id) : sdraft.hidden.add(id); lb.classList.toggle("off", !cb.checked); };
+    return lb;
+  }));
+  const mounts = ((srv.d && srv.d.tiles && srv.d.tiles._mounts) || []).filter(m => !["/boot", "/boot/efi"].includes(m) || sdraft.mounts.has(m));
+  $("mtog").replaceChildren(...mounts.map(m => {
+    const cb = h("input", {type: "checkbox"}); cb.checked = !sdraft.mounts.has(m);
+    const lb = h("label", {class: cb.checked ? "" : "off"}, cb, document.createTextNode(m));
+    cb.onchange = () => { cb.checked ? sdraft.mounts.delete(m) : sdraft.mounts.add(m); lb.classList.toggle("off", !cb.checked); };
+    return lb;
+  }));
+  $("mnote").hidden = !mounts.length;
+  const ok = cfg.cmds_allowed;
+  $("cwarn").innerHTML = "";
+  $("cwarn").append(ok ? document.createTextNode(`Commands run on the server as “${cfg.user}”, re-run every N seconds while someone is looking at the page, and are shown only to logged-in users. Interactive programs such as htop need a terminal and cannot draw here; use e.g. top -bn1 | head -15 or the built-in Top CPU / Top memory tiles.`)
+    : document.createTextNode("Command tiles are disabled: they execute shell commands, so watchcat only allows them when a PASSWORD is set in .env (then restart the service)."));
+  $("clist").replaceChildren(); sdraft.cmds = [];
+  if (ok) cfg.cmds.forEach(c => { const r = cmdRow(c); sdraft.cmds.push(r); $("clist").append(r.el); });
+  $("cadd").hidden = !ok; $("clist").hidden = !ok;
+}
+const loadSrvCfg = act(async () => {
+  srv.cfg = await api("GET", "/api/server-tiles");
+  if (!srv.d) { try { srv.d = await (await fetch("/api/sys")).json(); } catch (e) {} }
+  renderSrvCfg();
+});
+$("cadd").onclick = () => { if (sdraft.cmds.length >= 12) return toast("At most 12 command tiles"); const r = cmdRow({interval: 5}); sdraft.cmds.push(r); $("clist").append(r.el); };
+$("ssave2").onclick = act(async () => {
+  srv.cfg = await api("PUT", "/api/server-tiles", {hidden: [...sdraft.hidden], hide_mounts: [...sdraft.mounts],
+    cmds: srv.cfg.cmds_allowed ? sdraft.cmds.map(r => r.get()).filter(c => c.cmd.trim()) : []});
+  renderSrvCfg(); toast("Saved");
+  srv.key = ""; if (srv.on) { clearTimeout(srv.timer); srvPoll(); }
+});
+$("srvopen").onclick = () => { openPanel(false); goto(1); };
+
 $("mfit").classList.toggle("on", mode === "fit"); $("mscroll").classList.toggle("on", mode === "scroll");
 document.querySelectorAll("#hseg button").forEach(b => b.classList.toggle("on", +b.dataset.w === histWin));
 resetForm(); render(); applyAuth(); loadHist();
+const wantSrv = location.hash === "#server";   // read before syncChrome() rewrites the hash
+setPW();
+if (wantSrv) goto(1, true); else { showPages(false, true); syncChrome(); }
 </script>
 </body>
 </html>

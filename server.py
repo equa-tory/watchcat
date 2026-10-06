@@ -620,7 +620,7 @@ def state(authed):
             o["st"] = st
             o["fav"] = s["fav"]["v"] if "fav" in s else None
             svc.append(o)
-        return {"services": svc, "groups": dict(groups), "hv": hist_v, "auth_required": bool(PASSWORD), "authed": authed}
+        return {"services": svc, "groups": dict(groups), "hv": hist_v, "sys": sysinfo.SUPPORTED, "auth_required": bool(PASSWORD), "authed": authed}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -721,7 +721,8 @@ class Handler(BaseHTTPRequestHandler):
             if not sysinfo.SUPPORTED:
                 return self.json({"supported": False})
             full = self.authed()  # no PASSWORD set -> everyone counts as logged in
-            return self.json({**sysinfo.collect(full), "redacted": not full, "auth_required": bool(PASSWORD)})
+            peek = "peek=1" in (urlparse(self.path).query or "")
+            return self.json({**sysinfo.collect(full, peek), "redacted": not full, "auth_required": bool(PASSWORD)})
         if m == "GET" and p == ["history"]:
             with lock:
                 return self.json({"now": time.time(), "ev": history})
