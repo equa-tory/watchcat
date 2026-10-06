@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """watchcat - tiny service status dashboard. Python 3 standard library only."""
+import getpass
 import gzip
 import hmac
 import json
@@ -19,6 +20,8 @@ from datetime import datetime
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urljoin, urlparse
+
+import sysinfo
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 
@@ -53,6 +56,7 @@ SERVICES_FILE = os.path.join(DATA, "services.json")
 SETTINGS_FILE = os.path.join(DATA, "settings.json")
 ICONS = os.path.join(DATA, "icons")
 HIST_FILE = os.path.join(DATA, "history.json")
+SERVER_FILE = os.path.join(DATA, "servertiles.json")
 PASSWORD = cfg("PASSWORD")
 HOST = cfg("HOST", "0.0.0.0")
 PORT = int(cfg("PORT", "8888"))
@@ -69,6 +73,7 @@ groups = {}  # "3" -> {name, color}
 settings = {"path": "/mnt/ssd/backups/watchcat", "interval_hours": 48, "max_backups": 1}
 backup_error = ""
 sessions = {}  # token -> expiry
+server_tiles = {"hidden": [], "hide_mounts": [], "cmds": []}  # Server page: hidden tiles, hidden mounts, command tiles
 history = {}  # id -> [[ts, state], ...]  state changes only: 0 down, 1 up, 2 partial, 3 unknown (not monitored)
 hist_v = 0  # bumped on every recorded change so clients know when to refetch
 _cand = {}  # id -> (state, first_seen, count): a change must be seen twice in a row before it is recorded
@@ -203,6 +208,42 @@ def clean_groups(d):
         if name or color:
             out[str(int(k))] = {"name": name, "color": color.lower()}
     return out
+
+
+def clean_server_tiles(d, strict=True):
+    """Validate Server-page config. Command tiles run shell commands, so they need a PASSWORD (strict: error, else dropped)."""
+    if not isinstance(d, dict):
+        raise Err(400, "Invalid server tiles")
+    hidden = [h for h in d.get("hidden") or [] if h in sysinfo.BUILTIN]
+    mounts = [str(m)[:200] for m in (d.get("hide_mounts") or [])[:50] if str(m).startswith("/")]
+    cmds, seen = [], set()
+    for c in (d.get("cmds") or []):
+        if not isinstance(c, dict):
+            raise Err(400, "Invalid command tile")
+        cmd = str(c.get("cmd") or "").strip()[:500]
+        if not cmd:
+            continue
+        try:
+            interval = 5.0 if c.get("interval") in (None, "") else float(c["interval"])
+        except (TypeError, ValueError):
+            raise Err(400, "Interval must be a number of seconds")
+        if not 1 <= interval <= 3600:
+            raise Err(400, "Interval 1-3600 seconds")
+        cid = c.get("id") if isinstance(c.get("id"), str) and re.fullmatch(r"[0-9a-f]{8}", c["id"]) and c["id"] not in seen else secrets.token_hex(4)
+        seen.add(cid)
+        cmds.append({"id": cid, "name": str(c.get("name") or "").strip()[:40] or "Command", "cmd": cmd,
+                     "interval": int(interval) if interval == int(interval) else round(interval, 1), "wide": bool(c.get("wide", True))})
+    if len(cmds) > 12:
+        raise Err(400, "At most 12 command tiles")
+    if cmds and not PASSWORD:
+        if strict:
+            raise Err(403, "Set PASSWORD in .env first: command tiles run shell commands on this server")
+        cmds = []
+    return {"hidden": hidden, "hide_mounts": mounts, "cmds": cmds}
+
+
+def apply_server_tiles():
+    sysinfo.configure({**server_tiles, "cmds_enabled": bool(PASSWORD)})
 
 
 def clean_settings(d):
@@ -489,7 +530,7 @@ BACKUP_RE = re.compile(r"^watchcat-\d{8}-\d{6}\.json$")
 def snapshot():
     with lock:
         svc = [{k: v for k, v in s.items() if k not in ("fav", "fav_try")} for s in services]
-        return {"app": "watchcat", "version": 2, "services": svc, "groups": dict(groups)}
+        return {"app": "watchcat", "version": 2, "services": svc, "groups": dict(groups), "server": dict(server_tiles)}
 
 
 def list_backups():
@@ -524,6 +565,7 @@ def restore(data):
         raise Err(400, "Invalid backup file")
     new = clean_services(data.get("services"))
     new_groups = clean_groups(data["groups"]) if "groups" in data else None
+    new_server = clean_server_tiles(data["server"], strict=False) if isinstance(data.get("server"), dict) else None
     with lock:
         old = {s["id"]: s for s in services}
         for s in new:
@@ -538,6 +580,10 @@ def restore(data):
             groups.clear()
             groups.update(new_groups)
             save_settings()
+        if new_server is not None:
+            server_tiles.update(new_server)
+            save_json(SERVER_FILE, server_tiles)
+            apply_server_tiles()
     icon_scan()
     wake.set()
 
@@ -671,6 +717,11 @@ class Handler(BaseHTTPRequestHandler):
             return self.json(state(self.authed()))
         if m == "GET" and len(p) == 2 and p[0] == "icon":
             return self.icon(p[1])
+        if m == "GET" and p == ["sys"]:
+            if not sysinfo.SUPPORTED:
+                return self.json({"supported": False})
+            full = self.authed()  # no PASSWORD set -> everyone counts as logged in
+            return self.json({**sysinfo.collect(full), "redacted": not full, "auth_required": bool(PASSWORD)})
         if m == "GET" and p == ["history"]:
             with lock:
                 return self.json({"now": time.time(), "ev": history})
@@ -705,6 +756,18 @@ class Handler(BaseHTTPRequestHandler):
                 groups.update(new)
                 save_settings()
             return self.json(state(True))
+        if p == ["server-tiles"]:
+            if m == "GET":
+                return self.json({**server_tiles, "builtin": sysinfo.BUILTIN, "cmds_allowed": bool(PASSWORD),
+                                  "user": getpass.getuser()})
+            if m == "PUT":
+                new = clean_server_tiles(self.body(raw))
+                with lock:
+                    server_tiles.update(new)
+                    save_json(SERVER_FILE, server_tiles)
+                    apply_server_tiles()
+                return self.json({**server_tiles, "builtin": sysinfo.BUILTIN, "cmds_allowed": bool(PASSWORD),
+                                  "user": getpass.getuser()})
         if p[:1] == ["backup"]:
             return self.backup(m, p[1:], raw)
         raise Err(404, "Not found")
@@ -801,6 +864,13 @@ def main():
         pass
     persist()  # writes back migrated (multi-address) format
     load_history()
+    raw = load_json(SERVER_FILE, {})
+    try:
+        server_tiles.update(clean_server_tiles(raw, strict=False))
+    except Err:
+        pass
+    sysinfo.init(cfg)
+    apply_server_tiles()
     threading.Thread(target=checker, daemon=True).start()
     threading.Thread(target=backup_loop, daemon=True).start()
     threading.Thread(target=icon_worker, daemon=True).start()
