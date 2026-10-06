@@ -2,6 +2,7 @@
 """watchcat - tiny service status dashboard. Python 3 standard library only."""
 import getpass
 import gzip
+import hashlib
 import hmac
 import json
 import os
@@ -57,6 +58,7 @@ SETTINGS_FILE = os.path.join(DATA, "settings.json")
 ICONS = os.path.join(DATA, "icons")
 HIST_FILE = os.path.join(DATA, "history.json")
 SERVER_FILE = os.path.join(DATA, "servertiles.json")
+SESSIONS_FILE = os.path.join(DATA, "sessions.json")
 PASSWORD = cfg("PASSWORD")
 HOST = cfg("HOST", "0.0.0.0")
 PORT = int(cfg("PORT", "8888"))
@@ -64,7 +66,7 @@ CHECK_INTERVAL = max(5, int(cfg("CHECK_INTERVAL", "30")))
 MAX_BODY = 2 * 1024 * 1024
 MAX_SERVICES = 500
 MAX_ADDRS = 16
-SESSION_TTL = 30 * 24 * 3600
+SESSION_TTL = int(float(cfg("SESSION_DAYS", "14")) * 24 * 3600)
 
 lock = threading.RLock()
 services = []  # [{id, name, icon, group, addrs:[{url,label,tcp}], fav?, fav_try?}]
@@ -72,7 +74,7 @@ status = {}  # id -> [{up: bool|None, ms: int|None}] aligned with addrs
 groups = {}  # "3" -> {name, color}
 settings = {"path": "/mnt/ssd/backups/watchcat", "interval_hours": 48, "max_backups": 1}
 backup_error = ""
-sessions = {}  # token -> expiry
+sessions = {}  # sha256(token) -> expiry; persisted so a restart does not log everyone out
 server_tiles = {"hidden": [], "hide_mounts": [], "cmds": []}  # Server page: hidden tiles, hidden mounts, command tiles
 history = {}  # id -> [[ts, state], ...]  state changes only: 0 down, 1 up, 2 partial, 3 unknown (not monitored)
 hist_v = 0  # bumped on every recorded change so clients know when to refetch
@@ -116,6 +118,35 @@ def persist():
 
 def save_settings():
     save_json(SETTINGS_FILE, {**settings, "groups": groups})
+
+
+# ---------- sessions (survive restarts) ----------
+
+def _skey(tok):
+    return hashlib.sha256(tok.encode()).hexdigest()  # only hashes are stored, never the cookie value
+
+
+def _pwfp():
+    return hashlib.sha256(("watchcat-sessions|" + PASSWORD).encode()).hexdigest()
+
+
+def save_sessions():
+    now = time.time()
+    for k in [k for k, v in sessions.items() if v < now]:
+        del sessions[k]
+    tmp = SESSIONS_FILE + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump({"pw": _pwfp(), "s": sessions}, f)
+    os.replace(tmp, SESSIONS_FILE)
+
+
+def load_sessions():
+    d = load_json(SESSIONS_FILE, {})
+    # a different password invalidates every login
+    if PASSWORD and isinstance(d, dict) and d.get("pw") == _pwfp() and isinstance(d.get("s"), dict):
+        now = time.time()
+        sessions.update({k: v for k, v in d["s"].items() if isinstance(v, (int, float)) and v > now})
 
 
 # ---------- validation ----------
@@ -608,6 +639,17 @@ def backup_loop():
 with open(os.path.join(ROOT, "static", "index.html"), encoding="utf-8") as _f:
     PAGE = _f.read()
 
+# public static files for "Add to home screen" (manifest, icons, a tiny service worker)
+PWA_FILES = {"/manifest.webmanifest": "application/manifest+json", "/sw.js": "text/javascript",
+             "/icon-192.png": "image/png", "/icon-512.png": "image/png", "/apple-touch-icon.png": "image/png"}
+PWA = {}
+for _name, _type in PWA_FILES.items():
+    try:
+        with open(os.path.join(ROOT, "static", _name.lstrip("/")), "rb") as _f:
+            PWA[_name] = (_f.read(), _type)
+    except OSError:
+        pass
+
 
 def state(authed):
     with lock:
@@ -652,7 +694,7 @@ class Handler(BaseHTTPRequestHandler):
             return True
         c = SimpleCookie(self.headers.get("Cookie", ""))
         tok = c["wc_session"].value if "wc_session" in c else ""
-        return sessions.get(tok, 0) > time.time()
+        return bool(tok) and sessions.get(_skey(tok), 0) > time.time()
 
     def do_GET(self):
         self.route()
@@ -709,6 +751,12 @@ class Handler(BaseHTTPRequestHandler):
             if "gzip" in self.headers.get("Accept-Encoding", ""):
                 data, hdr = gzip.compress(data, 6), [("Content-Encoding", "gzip")]
             return self.reply(200, data, "text/html; charset=utf-8", hdr)
+        if m == "GET" and len(p) == 1 and "/" + p[0] in PWA:
+            body, ctype = PWA["/" + p[0]]
+            hdr = [("Cache-Control", "no-cache" if p[0] == "sw.js" else "public, max-age=86400")]
+            if p[0] == "sw.js":
+                hdr.append(("Service-Worker-Allowed", "/"))
+            return self.reply(200, body, ctype, hdr)
         if p[:1] != ["api"]:
             raise Err(404, "Not found")
         p = p[1:]
@@ -734,17 +782,17 @@ class Handler(BaseHTTPRequestHandler):
                 time.sleep(1)
                 raise Err(401, "Wrong password")
             now = time.time()
-            for k in [k for k, v in sessions.items() if v < now]:
-                del sessions[k]
             tok = secrets.token_urlsafe(32)
-            sessions[tok] = now + SESSION_TTL
+            sessions[_skey(tok)] = now + SESSION_TTL
+            save_sessions()
             sec = "; Secure" if self.headers.get("X-Forwarded-Proto") == "https" else ""
             return self.json({"ok": True}, headers=[(
                 "Set-Cookie", f"wc_session={tok}; HttpOnly; SameSite=Strict; Path=/; Max-Age={SESSION_TTL}{sec}")])
         if m == "POST" and p == ["logout"]:
             c = SimpleCookie(self.headers.get("Cookie", ""))
             if "wc_session" in c:
-                sessions.pop(c["wc_session"].value, None)
+                sessions.pop(_skey(c["wc_session"].value), None)
+                save_sessions()
             return self.json({"ok": True}, headers=[("Set-Cookie", "wc_session=; Max-Age=0; Path=/")])
 
         if not self.authed():
@@ -867,6 +915,7 @@ def main():
         pass
     persist()  # writes back migrated (multi-address) format
     load_history()
+    load_sessions()
     raw = load_json(SERVER_FILE, {})
     try:
         server_tiles.update(clean_server_tiles(raw, strict=False))

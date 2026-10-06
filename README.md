@@ -47,6 +47,15 @@ A second page with live stats about the machine watchcat runs on, built from the
 
 Optional settings (`.env`): `OLLAMA_HOST` (default `http://127.0.0.1:11434`), `FRP_CONFIG` / `FRP_SERVICE` (auto-detected from the running `frpc`, service name `frp`), `XRAY_CONFIG` / `XRAY_SERVICE` / `XRAY_PROXY` / `XRAY_TEST_URL` / `XRAY_IP_URL`.
 
+## Install as an app (PWA)
+
+watchcat ships a web-app manifest, icons and a tiny service worker, so it can be added to the home screen and opens full-screen without browser chrome (which also makes the swipe feel natural). The cat icon appears on the home screen; long-press it for a "Server stats" shortcut.
+
+- **Android / Chrome**: menu -> *Install app* / *Add to Home screen*. Chrome only offers a real install (standalone window) on **HTTPS** (or `localhost`). Over plain `http://192.168.x.x:8888` it can only create a shortcut that still opens in a browser tab. If you reach watchcat through an HTTPS reverse proxy / DDNS address, install from that address.
+- **iPhone / Safari**: Share -> *Add to Home Screen*. The page declares itself full-screen capable and pads for the notch and home bar (not tested on a real iPhone).
+- If the server is unreachable the app shows a small "Can't reach watchcat" page with a Retry button instead of a browser error. Nothing is cached, so you always see the live page.
+- Re-create the icons with `python3 tools/make_icons.py` (standard library only).
+
 ## Password (optional)
 
 Create `.env` (see `.env.example`):
@@ -58,7 +67,7 @@ PASSWORD=your-secret
 - `PASSWORD` set: everyone can **view** the dashboard, but changing services or touching backups requires logging in (the login form appears in the settings panel).
 - No `.env` or empty `PASSWORD`: no login anywhere.
 
-Other options: `PORT` (8888), `HOST` (0.0.0.0), `CHECK_INTERVAL` seconds (30), `DATA_DIR` (`./data`). Real environment variables override `.env`.
+Logins survive restarts (stored as hashes in `data/sessions.json`, mode 600) and last `SESSION_DAYS` days (default 14); changing the password logs everyone out. Other options: `PORT` (8888), `HOST` (0.0.0.0), `CHECK_INTERVAL` seconds (30), `DATA_DIR` (`./data`). Real environment variables override `.env`.
 
 ## Backups
 

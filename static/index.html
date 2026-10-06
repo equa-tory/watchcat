@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>watchcat</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#f3f4f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0c0e13" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="watchcat">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23151922'/%3E%3Ccircle cx='16' cy='16' r='6' fill='%2334d399'/%3E%3C/svg%3E">
 <style>
 :root{
@@ -95,13 +103,13 @@ a.tile:hover,.tile[role=button]:hover,a.tile:focus-visible,.tile[role=button]:fo
 #edgeR{right:0;border-right:0;border-radius:14px 0 0 14px}
 @media (hover:none){.edge,#tabs{display:none}}
 /* page dots: same look, but a much bigger click target */
-#dots{position:fixed;left:50%;bottom:0;transform:translateX(-50%);z-index:4;display:flex;opacity:.6}
+#dots{position:fixed;left:50%;bottom:env(safe-area-inset-bottom,0px);transform:translateX(-50%);z-index:4;display:flex;opacity:.6}
 #dots button{width:34px;height:28px;padding:0;border:0;background:none;cursor:pointer;display:grid;place-items:center}
 #dots button::after{content:"";width:7px;height:7px;border-radius:50%;background:var(--muted);opacity:.45;transition:transform .15s,opacity .15s}
 #dots button:hover::after{opacity:1;transform:scale(1.5)}
 #dots button.on::after{opacity:1;background:var(--accent)}
 /* labelled switcher: slides in when the mouse goes near the top of the screen (PC) */
-#tabs{position:fixed;top:10px;left:50%;z-index:5;display:flex;gap:4px;padding:4px;border-radius:999px;border:1px solid var(--border);
+#tabs{position:fixed;top:max(10px,env(safe-area-inset-top));left:50%;z-index:5;display:flex;gap:4px;padding:4px;border-radius:999px;border:1px solid var(--border);
   background:color-mix(in srgb,var(--surface) 90%,transparent);box-shadow:var(--shadow);backdrop-filter:blur(8px);
   opacity:0;pointer-events:none;transform:translate(-50%,-8px);transition:opacity .18s,transform .18s}
 #tabs.show,#tabs:hover,#tabs:focus-within{opacity:1;pointer-events:auto;transform:translate(-50%,0)}
@@ -550,12 +558,22 @@ function sizeTile(t, tw, th, k) {
 let mode = "fit";
 try { if (localStorage.getItem("wc_mode") === "scroll") mode = "scroll"; } catch (e) {}
 let ord = [];
+let insetProbe = null;
+function insets() {   // safe-area insets in px (all 0 in a normal browser tab)
+  if (!insetProbe) {
+    insetProbe = h("div", {style: "position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top,0px) env(safe-area-inset-right,0px) env(safe-area-inset-bottom,0px) env(safe-area-inset-left,0px)"});
+    document.body.append(insetProbe);
+  }
+  const c = getComputedStyle(insetProbe);
+  return {t: parseFloat(c.paddingTop) || 0, r: parseFloat(c.paddingRight) || 0, b: parseFloat(c.paddingBottom) || 0, l: parseFloat(c.paddingLeft) || 0};
+}
 // Generic board layout: picks columns, fills the screen edge to edge and calls sizeFn(tile, w, h, i) per tile.
 function boardLayout(g, spans, sizeFn) {
   const n = spans.length, root = document.documentElement, fit = mode === "fit";
   if (!n) return;
   const gap = fit ? (n > 24 ? 6 : n > 10 ? 8 : 12) : 14, pad = fit ? gap + 2 : 18;
-  const W = pw - 2 * pad, H = Math.max(60, innerHeight - 2 * pad);
+  const ins = insets(), pT = Math.max(pad, ins.t), pR = Math.max(pad, ins.r), pB = Math.max(pad, ins.b), pL = Math.max(pad, ins.l);  // notch / home bar when installed
+  const W = pw - pL - pR, H = Math.max(60, innerHeight - pT - pB);
   let best = null;
   if (fit) {
     for (let cols = 1; cols <= Math.min(24, n + 2); cols++) {
@@ -571,7 +589,7 @@ function boardLayout(g, spans, sizeFn) {
   const {cols, p, cw} = best, ch = Math.floor(best.ch);
   const s = g.style;
   s.gridTemplateColumns = `repeat(${cols},minmax(0,1fr))`; s.gridTemplateRows = `repeat(${p.rows},${ch}px)`;
-  s.gap = gap + "px"; s.padding = pad + "px";
+  s.gap = gap + "px"; s.padding = `${pT}px ${pR}px ${pB}px ${pL}px`;
   s.height = fit ? innerHeight + "px" : "auto";
   for (let i = 0; i < n; i++) {
     const t = g.children[i], q = p.pos[i];
@@ -1133,6 +1151,7 @@ $("mfit").classList.toggle("on", mode === "fit"); $("mscroll").classList.toggle(
 document.querySelectorAll("#hseg button").forEach(b => b.classList.toggle("on", +b.dataset.w === histWin));
 resetForm(); render(); applyAuth(); loadHist();
 const wantSrv = location.hash === "#server";   // read before syncChrome() rewrites the hash
+try { if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {}); } catch (e) {}
 setPW();
 if (wantSrv) goto(1, true); else { showPages(false, true); syncChrome(); }
 </script>
