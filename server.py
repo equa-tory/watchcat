@@ -9,6 +9,7 @@ import os
 import queue
 import re
 import secrets
+import signal
 import socket
 import ssl
 import sys
@@ -82,6 +83,9 @@ hist_v = 0  # bumped on every recorded change so clients know when to refetch
 _cand = {}  # id -> (state, first_seen, count): a change must be seen twice in a row before it is recorded
 _hist_saved = 0.0
 HIST_DAYS = 31
+START_TS = time.time()
+GRACE = float(cfg("OUTAGE_GRACE_SECONDS", "180"))   # after watchcat starts, things that are still booting aren't outages
+MASS_PCT = float(cfg("MASS_OUTAGE_PERCENT", "80"))   # this share of services failing at once = network/host event, not an outage (0 = off)
 MAX_EVENTS = 400
 wake = threading.Event()
 icon_q = queue.Queue()
@@ -385,10 +389,21 @@ def record_history(now):
             changed = True
         for sid in [k for k in _cand if k not in ids]:
             del _cand[sid]
+        states = {s["id"]: overall_state(s) for s in services}
+        known = [v for v in states.values() if v is not None]
+        bad = [v for v in known if v != 1]
+        # Automatic "maintenance" detection - none of this needs a manual switch:
+        in_grace = now - START_TS < GRACE                                   # host/containers still starting up
+        mass = MASS_PCT > 0 and len(known) >= 3 and len(bad) >= max(3, len(known) * MASS_PCT / 100)  # nearly everything failed at once
         for s in services:
-            sid, cur = s["id"], overall_state(s)
+            sid, cur = s["id"], states[s["id"]]
             if cur is None:
                 continue
+            if cur != 1:
+                if in_grace:
+                    continue      # wait: it may just be booting (a service that stays down is recorded once the grace ends)
+                if mass:
+                    cur = 3       # shown grey ("not monitored / network event"), not as an outage of each service
             ev = history.setdefault(sid, [])
             last = ev[-1][1] if ev else None
             if cur == last:
@@ -411,6 +426,22 @@ def record_history(now):
             hist_v += 1
         if changed or now - _hist_saved > 300:  # periodic save also refreshes "alive"
             save_history(now)
+
+
+def mark_unknown_now():
+    """Called when watchcat is stopped (service stop / reboot): from this moment nothing is being watched, so
+    services going down with the machine are not logged as outages."""
+    global hist_v
+    now = int(time.time())
+    with lock:
+        n = 0
+        for ev in history.values():
+            if ev and ev[-1][1] != 3:
+                ev.append([max(now, ev[-1][0]), 3])
+                n += 1
+        if n:
+            hist_v += 1
+        save_history(time.time())
 
 
 def load_history():
@@ -968,6 +999,16 @@ def main():
     threading.Thread(target=icon_worker, daemon=True).start()
     srv = ThreadingHTTPServer((HOST, PORT), Handler)
     srv.daemon_threads = True
+
+    def stop(signum, frame):  # systemd stop / reboot sends SIGTERM
+        def go():
+            try:
+                mark_unknown_now()
+            finally:
+                srv.shutdown()
+        threading.Thread(target=go, daemon=True).start()
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
     print(f"watchcat on http://{HOST}:{PORT}  (auth: {'on' if PASSWORD else 'off'})", flush=True)
     try:
         srv.serve_forever()
